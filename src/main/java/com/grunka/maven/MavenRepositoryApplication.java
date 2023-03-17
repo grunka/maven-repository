@@ -6,6 +6,8 @@ import io.dropwizard.setup.Environment;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.TimeZone;
 
 public class MavenRepositoryApplication extends Application<MavenRepositoryConfiguration> {
@@ -22,8 +24,11 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
         if (!Files.isWritable(remoteRepositoryDirectory)) {
             throw new IllegalStateException(remoteRepositoryDirectory + " is not writable");
         }
-        URI centralRepository = URI.create(configuration.centralRepository);
+        LinkedHashMap<String, URI> remoteRepositories = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : configuration.remoteRepositories.entrySet()) {
+            remoteRepositories.put(entry.getKey(), URI.create(entry.getValue()));
+        }
 
-        environment.jersey().register(new MavenRepositoryResource(remoteRepositoryDirectory, centralRepository));
+        environment.jersey().register(new MavenRepositoryResource(remoteRepositoryDirectory, remoteRepositories));
     }
 }

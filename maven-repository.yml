@@ -10,4 +10,5 @@ logging:
   level: INFO
 
 remoteRepositoryDirectory: remote
-centralRepository: https://repo1.maven.org/maven2/
+remoteRepositories:
+  central: https://repo1.maven.org/maven2/
