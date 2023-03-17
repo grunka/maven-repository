@@ -19,13 +19,14 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
         environment.jersey().register(JsonProvider.class);
 
-        Path remoteRepositoryDirectory = Path.of(configuration.remoteRepositoryDirectory);
+        Path remoteRepositoryDirectory = Path.of(configuration.storageDirectory);
         Files.createDirectories(remoteRepositoryDirectory);
         if (!Files.isWritable(remoteRepositoryDirectory)) {
             throw new IllegalStateException(remoteRepositoryDirectory + " is not writable");
         }
         LinkedHashMap<String, URI> remoteRepositories = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : configuration.remoteRepositories.entrySet()) {
+            //TODO fail if key is "local"
             remoteRepositories.put(entry.getKey(), URI.create(entry.getValue()));
         }
 

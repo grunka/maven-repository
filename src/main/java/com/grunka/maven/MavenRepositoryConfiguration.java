@@ -7,7 +7,7 @@ import java.util.Map;
 
 public class MavenRepositoryConfiguration extends Configuration {
     @NotNull
-    public String remoteRepositoryDirectory;
+    public String storageDirectory;
     @NotNull
     public Map<String, String> remoteRepositories;
 }

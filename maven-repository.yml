@@ -9,6 +9,6 @@ server:
 logging:
   level: INFO
 
-remoteRepositoryDirectory: remote
+storageDirectory: storage
 remoteRepositories:
   central: https://repo1.maven.org/maven2/

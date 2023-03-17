@@ -23,6 +23,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -30,31 +31,46 @@ import java.util.concurrent.CompletableFuture;
 public class MavenRepositoryResource {
     private static final Logger LOG = LoggerFactory.getLogger(MavenRepositoryResource.class);
     private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
-    private final java.nio.file.Path remoteRepositoryDirectory;
+    private static final String LOCAL = "local";
+    private final java.nio.file.Path storageDirectory;
     private final LinkedHashMap<String, URI> remoteRepositories;
 
-    public MavenRepositoryResource(java.nio.file.Path remoteRepositoryDirectory, LinkedHashMap<String, URI> remoteRepositories) {
-        this.remoteRepositoryDirectory = remoteRepositoryDirectory;
+    public MavenRepositoryResource(java.nio.file.Path storageDirectory, LinkedHashMap<String, URI> remoteRepositories) {
+        this.storageDirectory = storageDirectory;
         this.remoteRepositories = remoteRepositories;
     }
 
+    private record FileRequest(String repository, URI uri) {}
+
     private CompletableFuture<Response> getRepositoryContent(String path, boolean includeBody) {
-        java.nio.file.Path targetFile = remoteRepositoryDirectory.resolve(path).toAbsolutePath();
-        if (!targetFile.toAbsolutePath().startsWith(remoteRepositoryDirectory.toAbsolutePath())) {
-            LOG.error("Target file {} not inside of directory {}", targetFile, remoteRepositoryDirectory);
-            return CompletableFuture.completedFuture(notFound());
-        }
+        //TODO add the local repository
+        List<java.nio.file.Path> localFiles = new ArrayList<>();
+        localFiles.add(storageDirectory.resolve(LOCAL).resolve(path).toAbsolutePath()); //TODO verify inside <storage>/local
+        remoteRepositories.keySet().forEach(remote -> {
+            java.nio.file.Path localPath = storageDirectory.resolve(remote).resolve(path).toAbsolutePath();
+            if (!localPath.startsWith(storageDirectory.toAbsolutePath())) {
+                LOG.error("Target file {} not inside of directory {}", localPath, storageDirectory);
+                //TODO error handling
+                throw new IllegalStateException();
+            }
+            localFiles.add(localPath);
+        });
         //TODO check if release or snapshot, if snapshot read from remote if "timed out". Check timestamp of file
         //TODO multiple remotes, retry, download first, put in different repos
         //TODO <storage>/<repository>/<snapshot/releases>
         //TODO authentication
-        if (!Files.exists(targetFile)) {
-            LOG.info("Downloading {} from remote", path);
-            List<HttpRequest> httpRequests = new ArrayList<>(remoteRepositories.values().stream()
-                    .map(uri -> uri.resolve(path))
-                    .map(uri -> HttpRequest.newBuilder().GET().uri(uri).build())
-                    .toList());
-            return HTTP_CLIENT.sendAsync(httpRequests.remove(0), HttpResponse.BodyHandlers.ofByteArray())
+        Optional<java.nio.file.Path> localFile = localFiles.stream().filter(Files::exists).findFirst();
+        if (localFile.isEmpty()) {
+            List<FileRequest> requests = new ArrayList<>();
+            for (Map.Entry<String, URI> entry : remoteRepositories.entrySet()) {
+                requests.add(new FileRequest(entry.getKey(), entry.getValue().resolve(path)));
+            }
+
+            FileRequest fileRequest = requests.remove(0);
+            HttpRequest httpRequest = HttpRequest.newBuilder().GET().uri(fileRequest.uri()).build();
+            java.nio.file.Path targetFile = storageDirectory.resolve(fileRequest.repository()).resolve(path);
+            LOG.info("Downloading {} from remote {}", path, fileRequest.uri());
+            return HTTP_CLIENT.sendAsync(httpRequest, HttpResponse.BodyHandlers.ofByteArray())
                     .thenAccept(response -> {
                         if (response.statusCode() == 404) {
                             throw new IllegalStateException("Not found");
@@ -77,7 +93,7 @@ public class MavenRepositoryResource {
                     .exceptionally(t -> notFound());
         } else {
             LOG.info("Reading {} locally", path);
-            return createFileContentResponse(targetFile, includeBody);
+            return createFileContentResponse(localFile.get(), includeBody);
         }
     }
 
@@ -94,8 +110,8 @@ public class MavenRepositoryResource {
         String filename = targetFile.getFileName().toString();
         String contentType = switch (filename.substring(filename.lastIndexOf('.'))) {
             case ".jar" -> "application/java-archive";
-            case ".sha1" -> MediaType.TEXT_PLAIN;
-            case ".pom" -> MediaType.TEXT_XML;
+            case ".sha1", ".md5" -> MediaType.TEXT_PLAIN;
+            case ".xml", ".pom" -> MediaType.TEXT_XML;
             default -> MediaType.APPLICATION_OCTET_STREAM;
         };
         Response.ResponseBuilder responseBuilder = Response
@@ -138,8 +154,18 @@ public class MavenRepositoryResource {
     @Path("/{path:.+}")
     public Response put(@PathParam("path") String path, InputStream contentStream) throws IOException {
         byte[] content = contentStream.readAllBytes();
+        java.nio.file.Path localStorageDirectory = storageDirectory.resolve(LOCAL).toAbsolutePath();
+        java.nio.file.Path savePath = localStorageDirectory.resolve(path).toAbsolutePath();
+        if (!savePath.startsWith(localStorageDirectory)) {
+            //TODO error handling
+            throw new IllegalStateException();
+        }
+        Files.createDirectories(savePath.getParent());
+        Files.write(savePath, content);
+        //TODO remove previous snapshots if they are in here
         //TODO save content in snapshot or release locally
         //TODO block upload of existing releases
+        //TODO maybe use maven-metadata.xml to clean up / rename files
         return Response.ok().build();
     }
 }
