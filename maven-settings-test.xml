@@ -10,4 +10,23 @@
             <mirrorOf>*</mirrorOf>
         </mirror>
     </mirrors>
+    <profiles>
+        <profile>
+            <id>test</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <repositories>
+                <repository>
+                    <id>testing-snapshots</id>
+                    <url>http://localhost:9999/repository</url>
+                    <snapshots>
+                        <enabled>true</enabled>
+                        <checksumPolicy>fail</checksumPolicy>
+                        <updatePolicy>always</updatePolicy>
+                    </snapshots>
+                </repository>
+            </repositories>
+        </profile>
+    </profiles>
 </settings>

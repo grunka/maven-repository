@@ -40,24 +40,25 @@ public class MavenRepositoryResource {
         this.remoteRepositories = remoteRepositories;
     }
 
-    private record FileRequest(String repository, URI uri) {}
+    private record FileRequest(String repository, URI uri) {
+    }
+
+    private java.nio.file.Path resolveStorageDirectory(String repository, String path) {
+        java.nio.file.Path absoluteRepositoryPath = storageDirectory.resolve(repository).toAbsolutePath();
+        java.nio.file.Path artifactPath = storageDirectory.resolve(repository).resolve(path).toAbsolutePath();
+        if (!artifactPath.startsWith(absoluteRepositoryPath)) {
+            LOG.error("Path {} did not resolve inside of {}", path, absoluteRepositoryPath);
+            throw new IllegalArgumentException("Path did not end up inside repository");
+        }
+        return artifactPath;
+    }
 
     private CompletableFuture<Response> getRepositoryContent(String path, boolean includeBody) {
-        //TODO add the local repository
+        //TODO only get snapshots from local repository
         List<java.nio.file.Path> localFiles = new ArrayList<>();
-        localFiles.add(storageDirectory.resolve(LOCAL).resolve(path).toAbsolutePath()); //TODO verify inside <storage>/local
-        remoteRepositories.keySet().forEach(remote -> {
-            java.nio.file.Path localPath = storageDirectory.resolve(remote).resolve(path).toAbsolutePath();
-            if (!localPath.startsWith(storageDirectory.toAbsolutePath())) {
-                LOG.error("Target file {} not inside of directory {}", localPath, storageDirectory);
-                //TODO error handling
-                throw new IllegalStateException();
-            }
-            localFiles.add(localPath);
-        });
+        localFiles.add(resolveStorageDirectory(LOCAL, path));
+        remoteRepositories.keySet().forEach(remote -> localFiles.add(resolveStorageDirectory(remote, path)));
         //TODO check if release or snapshot, if snapshot read from remote if "timed out". Check timestamp of file
-        //TODO multiple remotes, retry, download first, put in different repos
-        //TODO <storage>/<repository>/<snapshot/releases>
         //TODO authentication
         Optional<java.nio.file.Path> localFile = localFiles.stream().filter(Files::exists).findFirst();
         if (localFile.isEmpty()) {
@@ -66,6 +67,7 @@ public class MavenRepositoryResource {
                 requests.add(new FileRequest(entry.getKey(), entry.getValue().resolve(path)));
             }
 
+            //TODO multiple remotes, retry, download first, put in different repos
             FileRequest fileRequest = requests.remove(0);
             HttpRequest httpRequest = HttpRequest.newBuilder().GET().uri(fileRequest.uri()).build();
             java.nio.file.Path targetFile = storageDirectory.resolve(fileRequest.repository()).resolve(path);
@@ -153,6 +155,9 @@ public class MavenRepositoryResource {
     @PUT
     @Path("/{path:.+}")
     public Response put(@PathParam("path") String path, InputStream contentStream) throws IOException {
+        //TODO validate hashes?
+        //TODO remove previous snapshots if they are in here
+        //TODO save content in snapshot or release locally
         byte[] content = contentStream.readAllBytes();
         java.nio.file.Path localStorageDirectory = storageDirectory.resolve(LOCAL).toAbsolutePath();
         java.nio.file.Path savePath = localStorageDirectory.resolve(path).toAbsolutePath();
@@ -160,12 +165,25 @@ public class MavenRepositoryResource {
             //TODO error handling
             throw new IllegalStateException();
         }
-        Files.createDirectories(savePath.getParent());
-        Files.write(savePath, content);
-        //TODO remove previous snapshots if they are in here
-        //TODO save content in snapshot or release locally
-        //TODO block upload of existing releases
-        //TODO maybe use maven-metadata.xml to clean up / rename files
+        String fileName = savePath.getFileName().toString();
+        if (fileName.startsWith("maven-metadata.xml")) {
+            //TODO maybe use maven-metadata.xml to clean up / validate files
+        } else {
+            String fileType = fileName.substring(fileName.lastIndexOf('.'));
+            if (".sha1".equals(fileType) || ".md5".equals(fileType)) {
+                fileType = fileName.substring(fileName.lastIndexOf('.', fileName.length() - fileType.length() - 1));
+            }
+            String version = savePath.getParent().getFileName().toString();
+            //String artifact = savePath.getParent().getParent().getFileName().toString();
+            if (version.endsWith("-SNAPSHOT")) {
+                String updatedFileName = fileName.replaceFirst("-\\d{8}\\.\\d{6}-\\d+(-[a-zA-Z]+)?" + fileType.replaceAll("\\.", "\\\\.") + "$", "-SNAPSHOT$1" + fileType);
+                savePath = savePath.getParent().resolve(updatedFileName);
+            } else {
+                //TODO block upload of existing releases
+            }
+            Files.createDirectories(savePath.getParent());
+            Files.write(savePath, content);
+        }
         return Response.ok().build();
     }
 }
