@@ -149,6 +149,8 @@ public class MavenRepositoryResource {
     @GET
     @Path("/{path:.+}")
     public CompletableFuture<Response> get(@PathParam("path") String path) {
+        //TODO add file listing if no file is being accessed
+        //TODO figure out how to provide the index that for instance intellij uses
         return getRepositoryContent(path, true);
     }
 
