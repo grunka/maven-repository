@@ -56,12 +56,19 @@ public class MavenRepositoryResource {
     private CompletableFuture<Response> getRepositoryContent(String path, boolean includeBody) {
         //TODO only get snapshots from local repository
         List<java.nio.file.Path> localFiles = new ArrayList<>();
-        localFiles.add(resolveStorageDirectory(LOCAL, path));
-        remoteRepositories.keySet().forEach(remote -> localFiles.add(resolveStorageDirectory(remote, path)));
+        java.nio.file.Path localRepositoryFile = resolveStorageDirectory(LOCAL, path);
+        boolean isSnapshotVersion = localRepositoryFile.getParent().getFileName().endsWith("-SNAPSHOT");
+        localFiles.add(localRepositoryFile);
+        if (!isSnapshotVersion) {
+            remoteRepositories.keySet().forEach(remote -> localFiles.add(resolveStorageDirectory(remote, path)));
+        }
         //TODO check if release or snapshot, if snapshot read from remote if "timed out". Check timestamp of file
         //TODO authentication
         Optional<java.nio.file.Path> localFile = localFiles.stream().filter(Files::exists).findFirst();
         if (localFile.isEmpty()) {
+            if (isSnapshotVersion) {
+                return CompletableFuture.completedFuture(notFound());
+            }
             List<FileRequest> requests = new ArrayList<>();
             for (Map.Entry<String, URI> entry : remoteRepositories.entrySet()) {
                 requests.add(new FileRequest(entry.getKey(), entry.getValue().resolve(path)));
@@ -137,7 +144,11 @@ public class MavenRepositoryResource {
     }
 
     private static Response notFound() {
-        return Response.status(Response.Status.NOT_FOUND).build();
+        return Response
+                .status(Response.Status.NOT_FOUND)
+                .header("Content-Type", MediaType.TEXT_PLAIN)
+                .entity("Not found")
+                .build();
     }
 
     @HEAD
@@ -183,6 +194,7 @@ public class MavenRepositoryResource {
                             .entity("Not allowed to update released file")
                             .build();
                 }
+                //TODO verify response codes
             }
             //TODO only allow specific file types? (.jar, .pom, .sha1, .md5)?
             Files.createDirectories(savePath.getParent());
