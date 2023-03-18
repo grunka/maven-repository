@@ -161,12 +161,7 @@ public class MavenRepositoryResource {
         //TODO remove previous snapshots if they are in here
         //TODO save content in snapshot or release locally
         byte[] content = contentStream.readAllBytes();
-        java.nio.file.Path localStorageDirectory = storageDirectory.resolve(LOCAL).toAbsolutePath();
-        java.nio.file.Path savePath = localStorageDirectory.resolve(path).toAbsolutePath();
-        if (!savePath.startsWith(localStorageDirectory)) {
-            //TODO error handling
-            throw new IllegalStateException();
-        }
+        java.nio.file.Path savePath = resolveStorageDirectory(LOCAL, path);
         String fileName = savePath.getFileName().toString();
         if (fileName.startsWith("maven-metadata.xml")) {
             //TODO maybe use maven-metadata.xml to clean up / validate files
