@@ -176,8 +176,15 @@ public class MavenRepositoryResource {
                 String updatedFileName = fileName.replaceFirst("-\\d{8}\\.\\d{6}-\\d+(-[a-zA-Z]+)?" + fileType.replaceAll("\\.", "\\\\.") + "$", "-SNAPSHOT$1" + fileType);
                 savePath = savePath.getParent().resolve(updatedFileName);
             } else {
-                //TODO block upload of existing releases
+                if (Files.exists(savePath)) {
+                    return Response
+                            .status(Response.Status.CONFLICT)
+                            .header("Content-Type", MediaType.TEXT_PLAIN)
+                            .entity("Not allowed to update released file")
+                            .build();
+                }
             }
+            //TODO only allow specific file types? (.jar, .pom, .sha1, .md5)?
             Files.createDirectories(savePath.getParent());
             Files.write(savePath, content);
         }
