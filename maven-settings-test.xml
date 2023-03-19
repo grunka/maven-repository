@@ -10,6 +10,18 @@
             <mirrorOf>*</mirrorOf>
         </mirror>
     </mirrors>
+    <servers>
+        <server>
+            <id>testing-snapshots</id>
+            <username>the-snapshot-username</username>
+            <password>the-snapshot-password</password>
+        </server>
+        <server>
+            <id>testing-repository</id>
+            <username>the-repository-username</username>
+            <password>the-repository-password</password>
+        </server>
+    </servers>
     <profiles>
         <profile>
             <id>test</id>

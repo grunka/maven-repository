@@ -3,7 +3,13 @@ package com.grunka.maven;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.ws.rs.*;
+import javax.servlet.http.HttpServletRequest;
+import javax.ws.rs.GET;
+import javax.ws.rs.HEAD;
+import javax.ws.rs.PUT;
+import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
@@ -26,9 +32,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Stream;
 
 @Path("/repository")
 public class MavenRepositoryResource {
+    private static final List<String> ACCEPTABLE_SUFFIXES = Stream.of(".jar", ".pom").flatMap(suffix -> Stream.of(suffix, suffix + ".md5", suffix + ".sha1")).toList();
     private static final Logger LOG = LoggerFactory.getLogger(MavenRepositoryResource.class);
     private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
     private static final String LOCAL = "local";
@@ -54,7 +62,6 @@ public class MavenRepositoryResource {
     }
 
     private CompletableFuture<Response> getRepositoryContent(String path, boolean includeBody) {
-        //TODO only get snapshots from local repository
         List<java.nio.file.Path> localFiles = new ArrayList<>();
         java.nio.file.Path localRepositoryFile = resolveStorageDirectory(LOCAL, path);
         boolean isSnapshotVersion = localRepositoryFile.getParent().getFileName().endsWith("-SNAPSHOT");
@@ -62,12 +69,11 @@ public class MavenRepositoryResource {
         if (!isSnapshotVersion) {
             remoteRepositories.keySet().forEach(remote -> localFiles.add(resolveStorageDirectory(remote, path)));
         }
-        //TODO check if release or snapshot, if snapshot read from remote if "timed out". Check timestamp of file
         //TODO authentication
         Optional<java.nio.file.Path> localFile = localFiles.stream().filter(Files::exists).findFirst();
         if (localFile.isEmpty()) {
             if (isSnapshotVersion) {
-                return CompletableFuture.completedFuture(notFound());
+                return CompletableFuture.completedFuture(notFound(path));
             }
             List<FileRequest> requests = new ArrayList<>();
             for (Map.Entry<String, URI> entry : remoteRepositories.entrySet()) {
@@ -99,7 +105,7 @@ public class MavenRepositoryResource {
                         }
                     })
                     .thenCompose(x -> createFileContentResponse(targetFile, includeBody))
-                    .exceptionally(t -> notFound());
+                    .exceptionally(t -> notFound(path));
         } else {
             LOG.info("Reading {} locally", path);
             return createFileContentResponse(localFile.get(), includeBody);
@@ -114,7 +120,12 @@ public class MavenRepositoryResource {
             lastModifiedTime = Files.getLastModifiedTime(targetFile);
         } catch (IOException e) {
             LOG.error("Could not read {}", targetFile, e);
-            return CompletableFuture.completedFuture(notFound());
+            return CompletableFuture.completedFuture(Response
+                    .status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .header("Content-Type", MediaType.TEXT_PLAIN)
+                    .entity("Could not read file")
+                    .build()
+            );
         }
         String filename = targetFile.getFileName().toString();
         String contentType = switch (filename.substring(filename.lastIndexOf('.'))) {
@@ -143,7 +154,17 @@ public class MavenRepositoryResource {
         }
     }
 
-    private static Response notFound() {
+    private static String md5(byte[] content) {
+        try {
+            MessageDigest messageDigest = MessageDigest.getInstance("MD-5");
+            return new BigInteger(1, messageDigest.digest(content)).toString(16);
+        } catch (NoSuchAlgorithmException e) {
+            throw new Error("MD-5 did not exist", e);
+        }
+    }
+
+    private static Response notFound(String missingPath) {
+        LOG.error("Could not read path {}", missingPath);
         return Response
                 .status(Response.Status.NOT_FOUND)
                 .header("Content-Type", MediaType.TEXT_PLAIN)
@@ -159,7 +180,7 @@ public class MavenRepositoryResource {
 
     @GET
     @Path("/{path:.+}")
-    public CompletableFuture<Response> get(@PathParam("path") String path) {
+    public CompletableFuture<Response> get(@PathParam("path") String path, @Context HttpServletRequest request) {
         //TODO add file listing if no file is being accessed
         //TODO figure out how to provide the index that for instance intellij uses
         return getRepositoryContent(path, true);
@@ -167,39 +188,69 @@ public class MavenRepositoryResource {
 
     @PUT
     @Path("/{path:.+}")
-    public Response put(@PathParam("path") String path, InputStream contentStream) throws IOException {
-        //TODO validate hashes?
-        //TODO remove previous snapshots if they are in here
-        //TODO save content in snapshot or release locally
-        byte[] content = contentStream.readAllBytes();
+    public Response put(@PathParam("path") String path, InputStream contentStream) {
+        //TODO validate hashes
+        byte[] content;
+        try {
+            content = contentStream.readAllBytes();
+        } catch (IOException e) {
+            LOG.error("Failed to read PUT content for path {}", path, e);
+            return Response
+                    .status(Response.Status.BAD_REQUEST)
+                    .header("Content-Type", MediaType.TEXT_PLAIN)
+                    .entity("Failed to read content")
+                    .build();
+        }
         java.nio.file.Path savePath = resolveStorageDirectory(LOCAL, path);
         String fileName = savePath.getFileName().toString();
         if (fileName.startsWith("maven-metadata.xml")) {
-            //TODO maybe use maven-metadata.xml to clean up / validate files
+            //TODO maybe use maven-metadata.xml to clean up / validate files?
         } else {
-            String fileType = fileName.substring(fileName.lastIndexOf('.'));
-            if (".sha1".equals(fileType) || ".md5".equals(fileType)) {
-                fileType = fileName.substring(fileName.lastIndexOf('.', fileName.length() - fileType.length() - 1));
+            Optional<String> acceptedSuffix = ACCEPTABLE_SUFFIXES.stream().filter(fileName::endsWith).findFirst();
+            if (acceptedSuffix.isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST).build();
             }
+            String fileType = acceptedSuffix.get();
             String version = savePath.getParent().getFileName().toString();
-            //String artifact = savePath.getParent().getParent().getFileName().toString();
             if (version.endsWith("-SNAPSHOT")) {
                 String updatedFileName = fileName.replaceFirst("-\\d{8}\\.\\d{6}-\\d+(-[a-zA-Z]+)?" + fileType.replaceAll("\\.", "\\\\.") + "$", "-SNAPSHOT$1" + fileType);
                 savePath = savePath.getParent().resolve(updatedFileName);
+                if (Files.exists(savePath)) {
+                    return saveContent(path, content, savePath, Response.Status.OK);
+                } else {
+                    return saveContent(path, content, savePath, Response.Status.CREATED);
+                }
             } else {
                 if (Files.exists(savePath)) {
                     return Response
-                            .status(Response.Status.CONFLICT)
+                            .status(Response.Status.BAD_REQUEST)
                             .header("Content-Type", MediaType.TEXT_PLAIN)
                             .entity("Not allowed to update released file")
                             .build();
+                } else {
+                    return saveContent(path, content, savePath, Response.Status.CREATED);
                 }
-                //TODO verify response codes
             }
-            //TODO only allow specific file types? (.jar, .pom, .sha1, .md5)?
-            Files.createDirectories(savePath.getParent());
-            Files.write(savePath, content);
         }
         return Response.ok().build();
+    }
+
+    private static Response saveContent(String path, byte[] content, java.nio.file.Path savePath, Response.Status statusCode) {
+        try {
+            Files.createDirectories(savePath.getParent());
+            Files.write(savePath, content);
+        } catch (IOException e) {
+            LOG.error("Failed to save file {}", savePath, e);
+            return Response
+                    .status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .header("Content-Type", MediaType.TEXT_PLAIN)
+                    .entity("Failed to save content")
+                    .build();
+        }
+        LOG.info("Saved path {} to {}", path, savePath);
+        return Response
+                .status(statusCode)
+                .header("Content-Location", "/repository/" + path)
+                .build();
     }
 }
