@@ -1,16 +1,18 @@
 package com.grunka.maven;
 
+import com.grunka.maven.authentication.MavenRepositoryUser;
+import com.grunka.maven.authentication.MavenRepositoryUserLevel;
+import io.dropwizard.auth.Auth;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.security.RolesAllowed;
-import javax.servlet.http.HttpServletRequest;
+import javax.annotation.security.PermitAll;
 import javax.ws.rs.GET;
 import javax.ws.rs.HEAD;
+import javax.ws.rs.OPTIONS;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
-import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
@@ -36,6 +38,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 @Path("/repository")
+@PermitAll
 public class MavenRepositoryResource {
     private static final List<String> ACCEPTABLE_SUFFIXES = Stream.of(".jar", ".pom").flatMap(suffix -> Stream.of(suffix, suffix + ".md5", suffix + ".sha1")).toList();
     private static final Logger LOG = LoggerFactory.getLogger(MavenRepositoryResource.class);
@@ -189,25 +192,72 @@ public class MavenRepositoryResource {
                 .build();
     }
 
+    private static boolean isMavenMetadata(String path) {
+        return path.endsWith("maven-metadata.xml") || path.endsWith("maven-metadata.xml.sha1") || path.endsWith("maven-metadata.xml.md5");
+    }
+
     @HEAD
     @Path("/{path:.+}")
-    @RolesAllowed({"read", "write"})
-    public CompletableFuture<Response> head(@PathParam("path") String path) {
+    public CompletableFuture<Response> head(@PathParam("path") String path, @Auth MavenRepositoryUser user) {
+        if (isMavenMetadata(path)) {
+            return CompletableFuture.completedFuture(notFound(path));
+        }
+        if (user.getLevel().compareTo(MavenRepositoryUserLevel.read) < 0) {
+            return CompletableFuture.completedFuture(Response
+                    .status(Response.Status.UNAUTHORIZED)
+                    .header("WWW-Authenticate", "Basic")
+                    .build());
+        }
         return getRepositoryContent(path, false);
+    }
+
+    @OPTIONS
+    @Path("/{path:.+}")
+    public Response options(@PathParam("path") String path, @Auth MavenRepositoryUser user) {
+        MavenRepositoryUserLevel level = user.getLevel();
+        if (level == MavenRepositoryUserLevel.none) {
+            return Response
+                    .status(Response.Status.NO_CONTENT)
+                    .header("Allow", "OPTIONS")
+                    .build();
+        }
+        if (level.compareTo(MavenRepositoryUserLevel.write) < 0) {
+            return Response
+                    .status(Response.Status.NO_CONTENT)
+                    .header("Allow", "OPTIONS, HEAD, GET")
+                    .build();
+        }
+        return Response
+                .status(Response.Status.NO_CONTENT)
+                .header("Allow", "OPTIONS, HEAD, GET, PUT")
+                .build();
     }
 
     @GET
     @Path("/{path:.+}")
-    @RolesAllowed({"read", "write"})
-    public CompletableFuture<Response> get(@PathParam("path") String path, @Context HttpServletRequest request) {
+    public CompletableFuture<Response> get(@PathParam("path") String path, @Auth MavenRepositoryUser user) {
         //TODO add file listing if no file is being accessed
+        if (isMavenMetadata(path)) {
+            return CompletableFuture.completedFuture(notFound(path));
+        }
+        if (user.getLevel().compareTo(MavenRepositoryUserLevel.read) < 0) {
+            return CompletableFuture.completedFuture(Response
+                    .status(Response.Status.UNAUTHORIZED)
+                    .header("WWW-Authenticate", "Basic")
+                    .build());
+        }
         return getRepositoryContent(path, true);
     }
 
     @PUT
     @Path("/{path:.+}")
-    @RolesAllowed("write")
-    public Response put(@PathParam("path") String path, InputStream contentStream, @Context HttpServletRequest request) {
+    public Response put(@PathParam("path") String path, InputStream contentStream, @Auth MavenRepositoryUser user) {
+        if (user.getLevel().compareTo(MavenRepositoryUserLevel.write) < 0) {
+            return Response
+                    .status(Response.Status.UNAUTHORIZED)
+                    .header("WWW-Authenticate", "Basic")
+                    .build();
+        }
         //TODO validate hashes
         byte[] content;
         try {

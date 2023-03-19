@@ -1,8 +1,8 @@
 package com.grunka.maven;
 
-import com.grunka.maven.authentication.MavenRepositoryDefaultUserFilter;
 import com.grunka.maven.authentication.MavenRepositoryAuthenticator;
 import com.grunka.maven.authentication.MavenRepositoryAuthorizer;
+import com.grunka.maven.authentication.MavenRepositoryDefaultUserFilter;
 import com.grunka.maven.authentication.MavenRepositoryUser;
 import io.dropwizard.Application;
 import io.dropwizard.auth.AuthDynamicFeature;
@@ -43,9 +43,8 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
         environment.jersey().register(MavenRepositoryDefaultUserFilter.class);
         environment.jersey().register(new AuthDynamicFeature(
                 new BasicCredentialAuthFilter.Builder<MavenRepositoryUser>()
-                        .setAuthenticator(new MavenRepositoryAuthenticator(configuration.defaultAccess))
+                        .setAuthenticator(new MavenRepositoryAuthenticator(configuration.defaultAccess, configuration.users))
                         .setAuthorizer(new MavenRepositoryAuthorizer())
-                        .setRealm("grunka/maven-repository")
                         .buildAuthFilter()));
         environment.jersey().register(RolesAllowedDynamicFeature.class);
         environment.jersey().register(new AuthValueFactoryProvider.Binder<>(MavenRepositoryUser.class));

@@ -1,17 +1,17 @@
 package com.grunka.maven.authentication;
 
 public enum MavenRepositoryUserLevel {
-    NONE, READ, WRITE;
+    none, read, write;
 
     public static MavenRepositoryUserLevel from(String name) {
         if ("read".equalsIgnoreCase(name)) {
-            return READ;
+            return read;
         }
         if ("write".equalsIgnoreCase(name)) {
-            return WRITE;
+            return write;
         }
         if ("none".equalsIgnoreCase(name)) {
-            return NONE;
+            return none;
         }
         throw new IllegalArgumentException("Accepted levels are read and write");
     }
