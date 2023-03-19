@@ -70,6 +70,10 @@ public class MavenRepositoryResource {
     private CompletableFuture<Response> getRepositoryContent(String path, boolean includeBody) {
         List<java.nio.file.Path> localFiles = new ArrayList<>();
         java.nio.file.Path localRepositoryFile = resolveStorageDirectory(LOCAL, path);
+        if (localRepositoryFile.getFileName().startsWith("maven-metadata.xml")) {
+            //TODO maybe generate file if needed
+            return CompletableFuture.completedFuture(notFound(path));
+        }
         boolean isSnapshotVersion = localRepositoryFile.getParent().getFileName().endsWith("-SNAPSHOT");
         localFiles.add(localRepositoryFile);
         if (!isSnapshotVersion) {
