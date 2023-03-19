@@ -14,6 +14,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.ref.SoftReference;
 import java.math.BigInteger;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 @Path("/repository")
@@ -42,6 +44,10 @@ public class MavenRepositoryResource {
     private static final String LOCAL = "local";
     private final java.nio.file.Path storageDirectory;
     private final LinkedHashMap<String, URI> remoteRepositories;
+    private final Map<java.nio.file.Path, SoftReference<CompletableFuture<FileContent>>> fileCache = new ConcurrentHashMap<>();
+
+    private record FileContent(byte[] content, FileTime lastModified, String sha1, String md5) {
+    }
 
     public MavenRepositoryResource(java.nio.file.Path storageDirectory, LinkedHashMap<String, URI> remoteRepositories) {
         this.storageDirectory = storageDirectory;
@@ -126,42 +132,53 @@ public class MavenRepositoryResource {
                     } catch (IOException e) {
                         LOG.error("Failed to save file content for {}", targetFile);
                         return CompletableFuture.failedFuture(new IllegalStateException("Cannot save file locally"));
+                    } finally {
+                        fileCache.remove(targetFile);
                     }
                     return CompletableFuture.completedFuture(targetFile);
                 });
     }
 
-    private static CompletableFuture<Response> createFileContentResponse(java.nio.file.Path targetFile, boolean includeBody) {
-        byte[] content;
-        FileTime lastModifiedTime;
-        try {
-            content = Files.readAllBytes(targetFile);
-            lastModifiedTime = Files.getLastModifiedTime(targetFile);
-        } catch (IOException e) {
-            LOG.error("Could not read {}", targetFile, e);
+    private CompletableFuture<Response> createFileContentResponse(java.nio.file.Path targetFile, boolean includeBody) {
+        CompletableFuture<FileContent> fileContentFuture = fileCache.compute(targetFile, (f, reference) -> {
+            if (reference != null && reference.get() != null) {
+                return reference;
+            }
+            return new SoftReference<>(CompletableFuture.supplyAsync(() -> {
+                try {
+                    byte[] content = Files.readAllBytes(targetFile);
+                    return new FileContent(content, Files.getLastModifiedTime(targetFile), sha1(content), md5(content));
+                } catch (IOException e) {
+                    LOG.error("Could not read {}", targetFile, e);
+                    throw new IllegalStateException("Could not read file");
+                }
+            }));
+        }).get();
+        if (fileContentFuture == null) {
             return CompletableFuture.completedFuture(Response
                     .status(Response.Status.INTERNAL_SERVER_ERROR)
                     .header("Content-Type", MediaType.TEXT_PLAIN)
-                    .entity("Could not read file")
-                    .build()
-            );
+                    .entity("Could not read content")
+                    .build());
         }
-        String filename = targetFile.getFileName().toString();
-        String contentType = switch (filename.substring(filename.lastIndexOf('.'))) {
-            case ".jar" -> "application/java-archive";
-            case ".sha1", ".md5" -> MediaType.TEXT_PLAIN;
-            case ".xml", ".pom" -> MediaType.TEXT_XML;
-            default -> MediaType.APPLICATION_OCTET_STREAM;
-        };
-        Response.ResponseBuilder responseBuilder = Response
-                .ok()
-                .header("Content-Type", contentType)
-                .header("Last-Modified", DateTimeFormatter.RFC_1123_DATE_TIME.format(lastModifiedTime.toInstant().atZone(ZoneId.of("UTC"))))
-                .header("Etag", "\"" + sha1(content) + "\"");
-        if (includeBody) {
-            responseBuilder = responseBuilder.entity(content);
-        }
-        return CompletableFuture.completedFuture(responseBuilder.build());
+        return fileContentFuture.thenApply(fileContent -> {
+            String filename = targetFile.getFileName().toString();
+            String contentType = switch (filename.substring(filename.lastIndexOf('.'))) {
+                case ".jar" -> "application/java-archive";
+                case ".sha1", ".md5" -> MediaType.TEXT_PLAIN;
+                case ".xml", ".pom" -> MediaType.TEXT_XML;
+                default -> MediaType.APPLICATION_OCTET_STREAM;
+            };
+            Response.ResponseBuilder responseBuilder = Response
+                    .ok()
+                    .header("Content-Type", contentType)
+                    .header("Last-Modified", DateTimeFormatter.RFC_1123_DATE_TIME.format(fileContent.lastModified().toInstant().atZone(ZoneId.of("UTC"))))
+                    .header("Etag", "\"" + fileContent.sha1() + "\"");
+            if (includeBody) {
+                responseBuilder = responseBuilder.entity(fileContent.content());
+            }
+            return responseBuilder.build();
+        });
     }
 
     private static String sha1(byte[] content) {
@@ -175,10 +192,10 @@ public class MavenRepositoryResource {
 
     private static String md5(byte[] content) {
         try {
-            MessageDigest messageDigest = MessageDigest.getInstance("MD-5");
+            MessageDigest messageDigest = MessageDigest.getInstance("MD5");
             return new BigInteger(1, messageDigest.digest(content)).toString(16);
         } catch (NoSuchAlgorithmException e) {
-            throw new Error("MD-5 did not exist", e);
+            throw new Error("MD5 did not exist", e);
         }
     }
 
@@ -253,7 +270,7 @@ public class MavenRepositoryResource {
         return Response.ok().build();
     }
 
-    private static Response saveContent(String path, byte[] content, java.nio.file.Path savePath, Response.Status statusCode) {
+    private Response saveContent(String path, byte[] content, java.nio.file.Path savePath, Response.Status statusCode) {
         try {
             Files.createDirectories(savePath.getParent());
             Files.write(savePath, content);
@@ -264,6 +281,8 @@ public class MavenRepositoryResource {
                     .header("Content-Type", MediaType.TEXT_PLAIN)
                     .entity("Failed to save content")
                     .build();
+        } finally {
+            fileCache.remove(savePath);
         }
         LOG.info("Saved path {} to {}", path, savePath);
         return Response
