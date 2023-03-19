@@ -69,9 +69,9 @@ public class MavenRepositoryResource {
     private CompletableFuture<Response> getRepositoryContent(String path, boolean includeBody) {
         List<java.nio.file.Path> localFiles = new ArrayList<>();
         java.nio.file.Path localRepositoryFile = resolveStorageDirectory(LOCAL, path);
-        if (localRepositoryFile.getFileName().startsWith("maven-metadata.xml")) {
+        if (isMavenMetadata(path)) {
             //TODO maybe generate file if needed
-            return CompletableFuture.completedFuture(notFound(path));
+            return CompletableFuture.completedFuture(notFound());
         }
         boolean isSnapshotVersion = localRepositoryFile.getParent().getFileName().endsWith("-SNAPSHOT");
         localFiles.add(localRepositoryFile);
@@ -81,7 +81,7 @@ public class MavenRepositoryResource {
         Optional<java.nio.file.Path> localFile = localFiles.stream().filter(Files::exists).findFirst();
         if (localFile.isEmpty()) {
             if (isSnapshotVersion) {
-                return CompletableFuture.completedFuture(notFound(path));
+                return CompletableFuture.completedFuture(notFound());
             }
             List<FileRequest> requests = new ArrayList<>();
             for (Map.Entry<String, URI> entry : remoteRepositories.entrySet()) {
@@ -91,7 +91,7 @@ public class MavenRepositoryResource {
             return getRemoteFile(path, requests)
                     .thenCompose(file -> {
                         if (file == null) {
-                            return CompletableFuture.completedFuture(notFound(path));
+                            return CompletableFuture.completedFuture(notFound());
                         }
                         return createFileContentResponse(file, includeBody);
                     })
@@ -183,8 +183,7 @@ public class MavenRepositoryResource {
         return fileContentFuture;
     }
 
-    private static Response notFound(String missingPath) {
-        LOG.error("Could not read path {}", missingPath);
+    private static Response notFound() {
         return Response
                 .status(Response.Status.NOT_FOUND)
                 .header("Content-Type", MediaType.TEXT_PLAIN)
@@ -199,14 +198,11 @@ public class MavenRepositoryResource {
     @HEAD
     @Path("/{path:.+}")
     public CompletableFuture<Response> head(@PathParam("path") String path, @Auth MavenRepositoryUser user) {
-        if (isMavenMetadata(path)) {
-            return CompletableFuture.completedFuture(notFound(path));
-        }
         if (user.getLevel().compareTo(MavenRepositoryUserLevel.read) < 0) {
-            return CompletableFuture.completedFuture(Response
-                    .status(Response.Status.UNAUTHORIZED)
-                    .header("WWW-Authenticate", "Basic")
-                    .build());
+            return CompletableFuture.completedFuture(unauthorized());
+        }
+        if (isMavenMetadata(path)) {
+            return CompletableFuture.completedFuture(notFound());
         }
         return getRepositoryContent(path, false);
     }
@@ -216,10 +212,10 @@ public class MavenRepositoryResource {
     public Response options(@PathParam("path") String path, @Auth MavenRepositoryUser user) {
         MavenRepositoryUserLevel level = user.getLevel();
         if (level == MavenRepositoryUserLevel.none) {
-            return Response
-                    .status(Response.Status.NO_CONTENT)
-                    .header("Allow", "OPTIONS")
-                    .build();
+            return unauthorized();
+        }
+        if (isMavenMetadata(path)) {
+            return notFound();
         }
         if (level.compareTo(MavenRepositoryUserLevel.write) < 0) {
             return Response
@@ -237,14 +233,11 @@ public class MavenRepositoryResource {
     @Path("/{path:.+}")
     public CompletableFuture<Response> get(@PathParam("path") String path, @Auth MavenRepositoryUser user) {
         //TODO add file listing if no file is being accessed
-        if (isMavenMetadata(path)) {
-            return CompletableFuture.completedFuture(notFound(path));
-        }
         if (user.getLevel().compareTo(MavenRepositoryUserLevel.read) < 0) {
-            return CompletableFuture.completedFuture(Response
-                    .status(Response.Status.UNAUTHORIZED)
-                    .header("WWW-Authenticate", "Basic")
-                    .build());
+            return CompletableFuture.completedFuture(unauthorized());
+        }
+        if (isMavenMetadata(path)) {
+            return CompletableFuture.completedFuture(notFound());
         }
         return getRepositoryContent(path, true);
     }
@@ -253,10 +246,7 @@ public class MavenRepositoryResource {
     @Path("/{path:.+}")
     public Response put(@PathParam("path") String path, InputStream contentStream, @Auth MavenRepositoryUser user) {
         if (user.getLevel().compareTo(MavenRepositoryUserLevel.write) < 0) {
-            return Response
-                    .status(Response.Status.UNAUTHORIZED)
-                    .header("WWW-Authenticate", "Basic")
-                    .build();
+            return unauthorized();
         }
         //TODO validate hashes
         byte[] content;
@@ -302,6 +292,13 @@ public class MavenRepositoryResource {
             }
         }
         return Response.ok().build();
+    }
+
+    private static Response unauthorized() {
+        return Response
+                .status(Response.Status.UNAUTHORIZED)
+                .header("WWW-Authenticate", "Basic")
+                .build();
     }
 
     private Response saveContent(String path, FileContent fileContent, Response.Status statusCode) {

@@ -17,5 +17,6 @@ defaultAccess: none
 users:
   read:
     the-snapshot-username: the-snapshot-password
-  write:
     the-repository-username: the-repository-password
+  write:
+    the-deploy-username: the-deploy-password

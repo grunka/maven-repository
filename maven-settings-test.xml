@@ -12,14 +12,19 @@
     </mirrors>
     <servers>
         <server>
+            <id>testing-repository</id>
+            <username>the-repository-username</username>
+            <password>the-repository-password</password>
+        </server>
+        <server>
             <id>testing-snapshots</id>
             <username>the-snapshot-username</username>
             <password>the-snapshot-password</password>
         </server>
         <server>
-            <id>testing-repository</id>
-            <username>the-repository-username</username>
-            <password>the-repository-password</password>
+            <id>testing-deploy</id>
+            <username>the-deploy-username</username>
+            <password>the-deploy-password</password>
         </server>
     </servers>
     <profiles>
