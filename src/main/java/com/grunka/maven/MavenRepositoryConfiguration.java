@@ -15,4 +15,5 @@ public class MavenRepositoryConfiguration extends Configuration {
     public MavenRepositoryUserLevel defaultAccess;
     @NotNull
     public Map<MavenRepositoryUserLevel, Map<String, String>> users;
+    //TODO make it possible to have some other user source than the configuration
 }

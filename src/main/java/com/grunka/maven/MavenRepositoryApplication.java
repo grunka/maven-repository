@@ -25,7 +25,6 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
     @Override
     public void run(MavenRepositoryConfiguration configuration, Environment environment) throws Exception {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
-        environment.jersey().register(JsonProvider.class);
 
         Path remoteRepositoryDirectory = Path.of(configuration.storageDirectory);
         Files.createDirectories(remoteRepositoryDirectory);

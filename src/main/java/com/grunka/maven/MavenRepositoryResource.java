@@ -70,7 +70,6 @@ public class MavenRepositoryResource {
         List<java.nio.file.Path> localFiles = new ArrayList<>();
         java.nio.file.Path localRepositoryFile = resolveStorageDirectory(LOCAL, path);
         if (isMavenMetadata(path)) {
-            //TODO maybe generate file if needed
             return CompletableFuture.completedFuture(notFound());
         }
         boolean isSnapshotVersion = localRepositoryFile.getParent().getFileName().endsWith("-SNAPSHOT");
@@ -232,7 +231,7 @@ public class MavenRepositoryResource {
     @GET
     @Path("/{path:.+}")
     public CompletableFuture<Response> get(@PathParam("path") String path, @Auth MavenRepositoryUser user) {
-        //TODO add file listing if no file is being accessed
+        //TODO add file listing if no file is being accessed?
         if (user.getLevel().compareTo(MavenRepositoryUserLevel.read) < 0) {
             return CompletableFuture.completedFuture(unauthorized());
         }
@@ -248,7 +247,9 @@ public class MavenRepositoryResource {
         if (user.getLevel().compareTo(MavenRepositoryUserLevel.write) < 0) {
             return unauthorized();
         }
-        //TODO validate hashes
+        if (isMavenMetadata(path)) {
+            return Response.ok().build();
+        }
         byte[] content;
         try {
             content = contentStream.readAllBytes();
@@ -262,36 +263,31 @@ public class MavenRepositoryResource {
         }
         java.nio.file.Path savePath = resolveStorageDirectory(LOCAL, path);
         String fileName = savePath.getFileName().toString();
-        if (fileName.startsWith("maven-metadata.xml")) {
-            //TODO maybe use maven-metadata.xml to clean up / validate files?
-        } else {
-            Optional<String> acceptedSuffix = ACCEPTABLE_SUFFIXES.stream().filter(fileName::endsWith).findFirst();
-            if (acceptedSuffix.isEmpty()) {
-                return Response.status(Response.Status.BAD_REQUEST).build();
-            }
-            String fileType = acceptedSuffix.get();
-            String version = savePath.getParent().getFileName().toString();
-            if (version.endsWith("-SNAPSHOT")) {
-                String updatedFileName = fileName.replaceFirst("-\\d{8}\\.\\d{6}-\\d+(-[a-zA-Z]+)?" + fileType.replaceAll("\\.", "\\\\.") + "$", "-SNAPSHOT$1" + fileType);
-                savePath = savePath.getParent().resolve(updatedFileName);
-                if (Files.exists(savePath)) {
-                    return saveContent(path, new FileContent(savePath, content, Instant.now()), Response.Status.OK);
-                } else {
-                    return saveContent(path, new FileContent(savePath, content, Instant.now()), Response.Status.CREATED);
-                }
+        Optional<String> acceptedSuffix = ACCEPTABLE_SUFFIXES.stream().filter(fileName::endsWith).findFirst();
+        if (acceptedSuffix.isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+        String fileType = acceptedSuffix.get();
+        String version = savePath.getParent().getFileName().toString();
+        if (version.endsWith("-SNAPSHOT")) {
+            String updatedFileName = fileName.replaceFirst("-\\d{8}\\.\\d{6}-\\d+(-[a-zA-Z]+)?" + fileType.replaceAll("\\.", "\\\\.") + "$", "-SNAPSHOT$1" + fileType);
+            savePath = savePath.getParent().resolve(updatedFileName);
+            if (Files.exists(savePath)) {
+                return saveContent(path, new FileContent(savePath, content, Instant.now()), Response.Status.OK);
             } else {
-                if (Files.exists(savePath)) {
-                    return Response
-                            .status(Response.Status.BAD_REQUEST)
-                            .header("Content-Type", MediaType.TEXT_PLAIN)
-                            .entity("Not allowed to update released file")
-                            .build();
-                } else {
-                    return saveContent(path, new FileContent(savePath, content, Instant.now()), Response.Status.CREATED);
-                }
+                return saveContent(path, new FileContent(savePath, content, Instant.now()), Response.Status.CREATED);
+            }
+        } else {
+            if (Files.exists(savePath)) {
+                return Response
+                        .status(Response.Status.BAD_REQUEST)
+                        .header("Content-Type", MediaType.TEXT_PLAIN)
+                        .entity("Not allowed to update released file")
+                        .build();
+            } else {
+                return saveContent(path, new FileContent(savePath, content, Instant.now()), Response.Status.CREATED);
             }
         }
-        return Response.ok().build();
     }
 
     private static Response unauthorized() {
@@ -302,6 +298,7 @@ public class MavenRepositoryResource {
     }
 
     private Response saveContent(String path, FileContent fileContent, Response.Status statusCode) {
+        //TODO validate hashes somehow, maybe do when metadata is put since that is "after"
         try {
             Files.createDirectories(fileContent.path().getParent());
             Files.write(fileContent.path(), fileContent.content());
