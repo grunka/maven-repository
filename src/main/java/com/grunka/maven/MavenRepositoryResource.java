@@ -90,7 +90,7 @@ public class MavenRepositoryResource {
                 requests.add(new FileRequest(entry.getKey(), entry.getValue().resolve(path)));
             }
 
-            return getRemoteFile(path, requests, includeBody)
+            return getRemoteFile(path, requests)
                     .thenCompose(file -> {
                         if (file == null) {
                             return CompletableFuture.completedFuture(notFound(path));
@@ -109,7 +109,7 @@ public class MavenRepositoryResource {
         }
     }
 
-    private CompletableFuture<java.nio.file.Path> getRemoteFile(String path, List<FileRequest> requests, boolean includeBody) {
+    private CompletableFuture<java.nio.file.Path> getRemoteFile(String path, List<FileRequest> requests) {
         if (requests.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
@@ -121,7 +121,7 @@ public class MavenRepositoryResource {
                 .thenCompose(response -> {
                     if (response.statusCode() != 200) {
                         LOG.error("Got status code {} from {}", response.statusCode(), fileRequest.uri());
-                        return getRemoteFile(path, requests, includeBody);
+                        return getRemoteFile(path, requests);
                     }
                     Optional<ZonedDateTime> lastModified = response.headers()
                             .firstValue("Last-Modified")
@@ -144,28 +144,7 @@ public class MavenRepositoryResource {
     }
 
     private CompletableFuture<Response> createFileContentResponse(java.nio.file.Path targetFile, boolean includeBody) {
-        CompletableFuture<FileContent> fileContentFuture = fileCache.compute(targetFile, (f, reference) -> {
-            if (reference != null && reference.get() != null) {
-                return reference;
-            }
-            return new SoftReference<>(CompletableFuture.supplyAsync(() -> {
-                try {
-                    byte[] content = Files.readAllBytes(targetFile);
-                    return new FileContent(content, Files.getLastModifiedTime(targetFile), sha1(content), md5(content));
-                } catch (IOException e) {
-                    LOG.error("Could not read {}", targetFile, e);
-                    throw new IllegalStateException("Could not read file");
-                }
-            }));
-        }).get();
-        if (fileContentFuture == null) {
-            return CompletableFuture.completedFuture(Response
-                    .status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .header("Content-Type", MediaType.TEXT_PLAIN)
-                    .entity("Could not read content")
-                    .build());
-        }
-        return fileContentFuture.thenApply(fileContent -> {
+        return getCachedFileContent(targetFile).thenApply(fileContent -> {
             String filename = targetFile.getFileName().toString();
             String contentType = switch (filename.substring(filename.lastIndexOf('.'))) {
                 case ".jar" -> "application/java-archive";
@@ -183,6 +162,27 @@ public class MavenRepositoryResource {
             }
             return responseBuilder.build();
         });
+    }
+
+    private CompletableFuture<FileContent> getCachedFileContent(java.nio.file.Path targetFile) {
+        CompletableFuture<FileContent> fileContentFuture;
+        do {
+            fileContentFuture = fileCache.compute(targetFile, (f, reference) -> {
+                if (reference != null && reference.get() != null) {
+                    return reference;
+                }
+                return new SoftReference<>(CompletableFuture.supplyAsync(() -> {
+                    try {
+                        byte[] content = Files.readAllBytes(targetFile);
+                        return new FileContent(content, Files.getLastModifiedTime(targetFile), sha1(content), md5(content));
+                    } catch (IOException e) {
+                        LOG.error("Could not read {}", targetFile, e);
+                        throw new IllegalStateException("Could not read file");
+                    }
+                }));
+            }).get();
+        } while (fileContentFuture == null);
+        return fileContentFuture;
     }
 
     private static String sha1(byte[] content) {
