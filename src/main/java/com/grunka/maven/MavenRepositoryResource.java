@@ -15,15 +15,13 @@ import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.SoftReference;
-import java.math.BigInteger;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.attribute.FileTime;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -45,9 +43,6 @@ public class MavenRepositoryResource {
     private final java.nio.file.Path storageDirectory;
     private final LinkedHashMap<String, URI> remoteRepositories;
     private final Map<java.nio.file.Path, SoftReference<CompletableFuture<FileContent>>> fileCache = new ConcurrentHashMap<>();
-
-    private record FileContent(byte[] content, FileTime lastModified, String sha1, String md5) {
-    }
 
     public MavenRepositoryResource(java.nio.file.Path storageDirectory, LinkedHashMap<String, URI> remoteRepositories) {
         this.storageDirectory = storageDirectory;
@@ -173,7 +168,7 @@ public class MavenRepositoryResource {
                 return new SoftReference<>(CompletableFuture.supplyAsync(() -> {
                     try {
                         byte[] content = Files.readAllBytes(targetFile);
-                        return new FileContent(content, Files.getLastModifiedTime(targetFile), sha1(content), md5(content));
+                        return new FileContent(targetFile, content, Files.getLastModifiedTime(targetFile));
                     } catch (IOException e) {
                         LOG.error("Could not read {}", targetFile, e);
                         throw new IllegalStateException("Could not read file");
@@ -182,24 +177,6 @@ public class MavenRepositoryResource {
             }).get();
         } while (fileContentFuture == null);
         return fileContentFuture;
-    }
-
-    private static String sha1(byte[] content) {
-        try {
-            MessageDigest messageDigest = MessageDigest.getInstance("SHA-1");
-            return new BigInteger(1, messageDigest.digest(content)).toString(16);
-        } catch (NoSuchAlgorithmException e) {
-            throw new Error("SHA-1 did not exist", e);
-        }
-    }
-
-    private static String md5(byte[] content) {
-        try {
-            MessageDigest messageDigest = MessageDigest.getInstance("MD5");
-            return new BigInteger(1, messageDigest.digest(content)).toString(16);
-        } catch (NoSuchAlgorithmException e) {
-            throw new Error("MD5 did not exist", e);
-        }
     }
 
     private static Response notFound(String missingPath) {
@@ -229,7 +206,7 @@ public class MavenRepositoryResource {
     @PUT
     @Path("/{path:.+}")
     //TODO authentication, write access
-    public Response put(@PathParam("path") String path, InputStream contentStream) {
+    public Response put(@PathParam("path") String path, InputStream contentStream, @Context HttpServletRequest request) {
         //TODO validate hashes
         byte[] content;
         try {
@@ -257,9 +234,9 @@ public class MavenRepositoryResource {
                 String updatedFileName = fileName.replaceFirst("-\\d{8}\\.\\d{6}-\\d+(-[a-zA-Z]+)?" + fileType.replaceAll("\\.", "\\\\.") + "$", "-SNAPSHOT$1" + fileType);
                 savePath = savePath.getParent().resolve(updatedFileName);
                 if (Files.exists(savePath)) {
-                    return saveContent(path, content, savePath, Response.Status.OK);
+                    return saveContent(path, new FileContent(savePath, content, Instant.now()), Response.Status.OK);
                 } else {
-                    return saveContent(path, content, savePath, Response.Status.CREATED);
+                    return saveContent(path, new FileContent(savePath, content, Instant.now()), Response.Status.CREATED);
                 }
             } else {
                 if (Files.exists(savePath)) {
@@ -269,28 +246,29 @@ public class MavenRepositoryResource {
                             .entity("Not allowed to update released file")
                             .build();
                 } else {
-                    return saveContent(path, content, savePath, Response.Status.CREATED);
+                    return saveContent(path, new FileContent(savePath, content, Instant.now()), Response.Status.CREATED);
                 }
             }
         }
         return Response.ok().build();
     }
 
-    private Response saveContent(String path, byte[] content, java.nio.file.Path savePath, Response.Status statusCode) {
+    private Response saveContent(String path, FileContent fileContent, Response.Status statusCode) {
         try {
-            Files.createDirectories(savePath.getParent());
-            Files.write(savePath, content);
+            Files.createDirectories(fileContent.path().getParent());
+            Files.write(fileContent.path(), fileContent.content());
+            Files.setLastModifiedTime(fileContent.path(), fileContent.lastModified());
         } catch (IOException e) {
-            LOG.error("Failed to save file {}", savePath, e);
+            LOG.error("Failed to save file {}", fileContent.path(), e);
             return Response
                     .status(Response.Status.INTERNAL_SERVER_ERROR)
                     .header("Content-Type", MediaType.TEXT_PLAIN)
                     .entity("Failed to save content")
                     .build();
         } finally {
-            fileCache.remove(savePath);
+            fileCache.remove(fileContent.path());
         }
-        LOG.info("Saved path {} to {}", path, savePath);
+        LOG.info("Saved path {} to {}", path, fileContent.path());
         return Response
                 .status(statusCode)
                 .header("Content-Location", "/repository/" + path)
