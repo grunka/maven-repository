@@ -79,7 +79,6 @@ public class MavenRepositoryResource {
         if (!isSnapshotVersion) {
             remoteRepositories.keySet().forEach(remote -> localFiles.add(resolveStorageDirectory(remote, path)));
         }
-        //TODO authentication
         Optional<java.nio.file.Path> localFile = localFiles.stream().filter(Files::exists).findFirst();
         if (localFile.isEmpty()) {
             if (isSnapshotVersion) {
@@ -214,12 +213,14 @@ public class MavenRepositoryResource {
 
     @HEAD
     @Path("/{path:.+}")
+    //TODO authentication, read access
     public CompletableFuture<Response> head(@PathParam("path") String path) {
         return getRepositoryContent(path, false);
     }
 
     @GET
     @Path("/{path:.+}")
+    //TODO authentication, read access
     public CompletableFuture<Response> get(@PathParam("path") String path, @Context HttpServletRequest request) {
         //TODO add file listing if no file is being accessed
         return getRepositoryContent(path, true);
@@ -227,6 +228,7 @@ public class MavenRepositoryResource {
 
     @PUT
     @Path("/{path:.+}")
+    //TODO authentication, write access
     public Response put(@PathParam("path") String path, InputStream contentStream) {
         //TODO validate hashes
         byte[] content;
