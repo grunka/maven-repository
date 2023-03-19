@@ -80,36 +80,55 @@ public class MavenRepositoryResource {
                 requests.add(new FileRequest(entry.getKey(), entry.getValue().resolve(path)));
             }
 
-            //TODO multiple remotes, retry, download first, put in different repos
-            FileRequest fileRequest = requests.remove(0);
-            HttpRequest httpRequest = HttpRequest.newBuilder().GET().uri(fileRequest.uri()).build();
-            java.nio.file.Path targetFile = storageDirectory.resolve(fileRequest.repository()).resolve(path);
-            LOG.info("Downloading {} from remote {}", path, fileRequest.uri());
-            return HTTP_CLIENT.sendAsync(httpRequest, HttpResponse.BodyHandlers.ofByteArray())
-                    .thenAccept(response -> {
-                        if (response.statusCode() == 404) {
-                            throw new IllegalStateException("Not found");
+            return getRemoteFile(path, requests, includeBody)
+                    .thenCompose(file -> {
+                        if (file == null) {
+                            return CompletableFuture.completedFuture(notFound(path));
                         }
-                        Optional<ZonedDateTime> lastModified = response.headers()
-                                .firstValue("Last-Modified")
-                                .map(t -> ZonedDateTime.parse(t, DateTimeFormatter.RFC_1123_DATE_TIME));
-                        byte[] fileContent = response.body();
-                        try {
-                            Files.createDirectories(targetFile.getParent());
-                            Files.write(targetFile, fileContent);
-                            if (lastModified.isPresent()) {
-                                Files.setLastModifiedTime(targetFile, FileTime.from(lastModified.get().toInstant()));
-                            }
-                        } catch (IOException e) {
-                            LOG.error("Failed to save file content for {}", targetFile);
-                        }
+                        return createFileContentResponse(file, includeBody);
                     })
-                    .thenCompose(x -> createFileContentResponse(targetFile, includeBody))
-                    .exceptionally(t -> notFound(path));
+                    .exceptionally(t -> Response
+                            .status(Response.Status.INTERNAL_SERVER_ERROR)
+                            .header("Content-Type", MediaType.TEXT_PLAIN)
+                            .entity(t.getMessage())
+                            .build()
+                    );
         } else {
             LOG.info("Reading {} locally", path);
             return createFileContentResponse(localFile.get(), includeBody);
         }
+    }
+
+    private CompletableFuture<java.nio.file.Path> getRemoteFile(String path, List<FileRequest> requests, boolean includeBody) {
+        if (requests.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        FileRequest fileRequest = requests.remove(0);
+        HttpRequest httpRequest = HttpRequest.newBuilder().GET().uri(fileRequest.uri()).build();
+        java.nio.file.Path targetFile = resolveStorageDirectory(fileRequest.repository(), path);
+        LOG.info("Downloading {} from remote {}", path, fileRequest.uri());
+        return HTTP_CLIENT.sendAsync(httpRequest, HttpResponse.BodyHandlers.ofByteArray())
+                .thenCompose(response -> {
+                    if (response.statusCode() != 200) {
+                        LOG.error("Got status code {} from {}", response.statusCode(), fileRequest.uri());
+                        return getRemoteFile(path, requests, includeBody);
+                    }
+                    Optional<ZonedDateTime> lastModified = response.headers()
+                            .firstValue("Last-Modified")
+                            .map(t -> ZonedDateTime.parse(t, DateTimeFormatter.RFC_1123_DATE_TIME));
+                    byte[] fileContent = response.body();
+                    try {
+                        Files.createDirectories(targetFile.getParent());
+                        Files.write(targetFile, fileContent);
+                        if (lastModified.isPresent()) {
+                            Files.setLastModifiedTime(targetFile, FileTime.from(lastModified.get().toInstant()));
+                        }
+                    } catch (IOException e) {
+                        LOG.error("Failed to save file content for {}", targetFile);
+                        return CompletableFuture.failedFuture(new IllegalStateException("Cannot save file locally"));
+                    }
+                    return CompletableFuture.completedFuture(targetFile);
+                });
     }
 
     private static CompletableFuture<Response> createFileContentResponse(java.nio.file.Path targetFile, boolean includeBody) {
