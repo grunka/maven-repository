@@ -26,7 +26,9 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
         }
         LinkedHashMap<String, URI> remoteRepositories = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : configuration.remoteRepositories.entrySet()) {
-            //TODO fail if key is "local"
+            if (MavenRepositoryResource.LOCAL.equals(entry.getKey())) {
+                throw new IllegalArgumentException("The name 'local' is reserved for the local repository");
+            }
             remoteRepositories.put(entry.getKey(), URI.create(entry.getValue()));
         }
 
