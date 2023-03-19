@@ -3,6 +3,7 @@ package com.grunka.maven;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.security.RolesAllowed;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.HEAD;
@@ -39,7 +40,7 @@ public class MavenRepositoryResource {
     private static final List<String> ACCEPTABLE_SUFFIXES = Stream.of(".jar", ".pom").flatMap(suffix -> Stream.of(suffix, suffix + ".md5", suffix + ".sha1")).toList();
     private static final Logger LOG = LoggerFactory.getLogger(MavenRepositoryResource.class);
     private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
-    private static final String LOCAL = "local";
+    static final String LOCAL = "local";
     private final java.nio.file.Path storageDirectory;
     private final LinkedHashMap<String, URI> remoteRepositories;
     private final Map<java.nio.file.Path, SoftReference<CompletableFuture<FileContent>>> fileCache = new ConcurrentHashMap<>();
@@ -190,14 +191,14 @@ public class MavenRepositoryResource {
 
     @HEAD
     @Path("/{path:.+}")
-    //TODO authentication, read access
+    @RolesAllowed({"read", "write"})
     public CompletableFuture<Response> head(@PathParam("path") String path) {
         return getRepositoryContent(path, false);
     }
 
     @GET
     @Path("/{path:.+}")
-    //TODO authentication, read access
+    @RolesAllowed({"read", "write"})
     public CompletableFuture<Response> get(@PathParam("path") String path, @Context HttpServletRequest request) {
         //TODO add file listing if no file is being accessed
         return getRepositoryContent(path, true);
@@ -205,7 +206,7 @@ public class MavenRepositoryResource {
 
     @PUT
     @Path("/{path:.+}")
-    //TODO authentication, write access
+    @RolesAllowed("write")
     public Response put(@PathParam("path") String path, InputStream contentStream, @Context HttpServletRequest request) {
         //TODO validate hashes
         byte[] content;

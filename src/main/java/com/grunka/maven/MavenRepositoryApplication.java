@@ -1,7 +1,15 @@
 package com.grunka.maven;
 
+import com.grunka.maven.authentication.MavenRepositoryDefaultUserFilter;
+import com.grunka.maven.authentication.MavenRepositoryAuthenticator;
+import com.grunka.maven.authentication.MavenRepositoryAuthorizer;
+import com.grunka.maven.authentication.MavenRepositoryUser;
 import io.dropwizard.Application;
+import io.dropwizard.auth.AuthDynamicFeature;
+import io.dropwizard.auth.AuthValueFactoryProvider;
+import io.dropwizard.auth.basic.BasicCredentialAuthFilter;
 import io.dropwizard.setup.Environment;
+import org.glassfish.jersey.server.filter.RolesAllowedDynamicFeature;
 
 import java.net.URI;
 import java.nio.file.Files;
@@ -31,6 +39,16 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
             }
             remoteRepositories.put(entry.getKey(), URI.create(entry.getValue()));
         }
+
+        environment.jersey().register(MavenRepositoryDefaultUserFilter.class);
+        environment.jersey().register(new AuthDynamicFeature(
+                new BasicCredentialAuthFilter.Builder<MavenRepositoryUser>()
+                        .setAuthenticator(new MavenRepositoryAuthenticator(configuration.defaultAccess))
+                        .setAuthorizer(new MavenRepositoryAuthorizer())
+                        .setRealm("grunka/maven-repository")
+                        .buildAuthFilter()));
+        environment.jersey().register(RolesAllowedDynamicFeature.class);
+        environment.jersey().register(new AuthValueFactoryProvider.Binder<>(MavenRepositoryUser.class));
 
         environment.jersey().register(new MavenRepositoryResource(remoteRepositoryDirectory, remoteRepositories));
     }

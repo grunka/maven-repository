@@ -11,6 +11,9 @@ public class MavenRepositoryConfiguration extends Configuration {
     @NotNull
     public Map<String, String> remoteRepositories;
 
+    @NotNull
+    public String defaultAccess;
+
     //TODO authentication configuration?
     // users:
     //   <username>: <password>
