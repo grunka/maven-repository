@@ -7,13 +7,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.security.PermitAll;
-import javax.annotation.security.RolesAllowed;
 import javax.ws.rs.GET;
 import javax.ws.rs.HEAD;
 import javax.ws.rs.OPTIONS;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
+import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
@@ -198,9 +198,7 @@ public class MavenRepositoryResource {
     @HEAD
     @Path("/{path:.+}")
     public CompletableFuture<Response> head(@PathParam("path") String path, @Auth MavenRepositoryUser user) {
-        if (user.getLevel().compareTo(MavenRepositoryUserLevel.read) < 0) {
-            return CompletableFuture.completedFuture(unauthorized());
-        }
+        assertUserLevel(user, MavenRepositoryUserLevel.read);
         if (isMavenMetadata(path)) {
             return CompletableFuture.completedFuture(notFound());
         }
@@ -210,14 +208,11 @@ public class MavenRepositoryResource {
     @OPTIONS
     @Path("/{path:.+}")
     public Response options(@PathParam("path") String path, @Auth MavenRepositoryUser user) {
-        MavenRepositoryUserLevel level = user.getLevel();
-        if (level == MavenRepositoryUserLevel.none) {
-            return unauthorized();
-        }
+        assertUserLevel(user, MavenRepositoryUserLevel.read);
         if (isMavenMetadata(path)) {
             return notFound();
         }
-        if (level.compareTo(MavenRepositoryUserLevel.write) < 0) {
+        if (user.getLevel().compareTo(MavenRepositoryUserLevel.write) < 0) {
             return Response
                     .status(Response.Status.NO_CONTENT)
                     .header("Allow", "OPTIONS, HEAD, GET")
@@ -233,9 +228,7 @@ public class MavenRepositoryResource {
     @Path("/{path:.+}")
     public CompletableFuture<Response> get(@PathParam("path") String path, @Auth MavenRepositoryUser user) {
         //TODO add file listing if no file is being accessed?
-        if (user.getLevel().compareTo(MavenRepositoryUserLevel.read) < 0) {
-            return CompletableFuture.completedFuture(unauthorized());
-        }
+        assertUserLevel(user, MavenRepositoryUserLevel.read);
         if (isMavenMetadata(path)) {
             return CompletableFuture.completedFuture(notFound());
         }
@@ -245,9 +238,7 @@ public class MavenRepositoryResource {
     @PUT
     @Path("/{path:.+}")
     public Response put(@PathParam("path") String path, InputStream contentStream, @Auth MavenRepositoryUser user) {
-        if (user.getLevel().compareTo(MavenRepositoryUserLevel.write) < 0) {
-            return unauthorized();
-        }
+        assertUserLevel(user, MavenRepositoryUserLevel.write);
         if (isMavenMetadata(path)) {
             return Response.ok().build();
         }
@@ -288,6 +279,12 @@ public class MavenRepositoryResource {
             } else {
                 return saveContent(path, new FileContent(savePath, content, Instant.now()), Response.Status.CREATED);
             }
+        }
+    }
+
+    private static void assertUserLevel(MavenRepositoryUser user, MavenRepositoryUserLevel level) {
+        if (user.getLevel().compareTo(level) < 0) {
+            throw new WebApplicationException(unauthorized());
         }
     }
 
