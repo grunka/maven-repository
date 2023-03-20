@@ -311,6 +311,7 @@ public class MavenRepositoryResource {
         if (!type.isRecord()) {
             throw new IllegalArgumentException("The type needs to be a record");
         }
+        //TODO complete this conversion thing
         Node rootNode = document.getChildNodes().item(0);
         return null;
     }
