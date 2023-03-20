@@ -1,6 +1,6 @@
 package com.grunka.maven;
 
-import com.grunka.maven.authentication.MavenRepositoryUserLevel;
+import com.grunka.maven.authentication.Access;
 import io.dropwizard.Configuration;
 
 import javax.validation.constraints.NotNull;
@@ -12,8 +12,8 @@ public class MavenRepositoryConfiguration extends Configuration {
     @NotNull
     public Map<String, String> remoteRepositories;
     @NotNull
-    public MavenRepositoryUserLevel defaultAccess;
+    public Access defaultAccess;
     @NotNull
-    public Map<MavenRepositoryUserLevel, Map<String, String>> users;
+    public Map<Access, Map<String, String>> users;
     //TODO make it possible to have some other user source than the configuration
 }

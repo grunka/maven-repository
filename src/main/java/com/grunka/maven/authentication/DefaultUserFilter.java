@@ -10,7 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 @Priority(Priorities.AUTHENTICATION - 1)
-public class MavenRepositoryDefaultUserFilter implements ContainerRequestFilter {
+public class DefaultUserFilter implements ContainerRequestFilter {
     public static final String DEFAULT_USERNAME = "defaultUser";
     public static final String DEFAULT_PASSWORD = "defaultPassword";
     private static final String DEFAULT_AUTHORIZATION = "Basic " + Base64.getEncoder().encodeToString((DEFAULT_USERNAME + ":" + DEFAULT_PASSWORD).getBytes(StandardCharsets.UTF_8));

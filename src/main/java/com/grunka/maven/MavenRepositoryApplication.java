@@ -1,9 +1,9 @@
 package com.grunka.maven;
 
-import com.grunka.maven.authentication.MavenRepositoryAuthenticator;
-import com.grunka.maven.authentication.MavenRepositoryAuthorizer;
-import com.grunka.maven.authentication.MavenRepositoryDefaultUserFilter;
-import com.grunka.maven.authentication.MavenRepositoryUser;
+import com.grunka.maven.authentication.BasicAuthenticator;
+import com.grunka.maven.authentication.BasicAuthorizer;
+import com.grunka.maven.authentication.DefaultUserFilter;
+import com.grunka.maven.authentication.User;
 import io.dropwizard.Application;
 import io.dropwizard.auth.AuthDynamicFeature;
 import io.dropwizard.auth.AuthValueFactoryProvider;
@@ -39,15 +39,15 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
             remoteRepositories.put(entry.getKey(), URI.create(entry.getValue()));
         }
 
-        environment.jersey().register(MavenRepositoryDefaultUserFilter.class);
+        environment.jersey().register(DefaultUserFilter.class);
         environment.jersey().register(new AuthDynamicFeature(
-                new BasicCredentialAuthFilter.Builder<MavenRepositoryUser>()
-                        .setAuthenticator(new MavenRepositoryAuthenticator(configuration.defaultAccess, configuration.users))
-                        .setAuthorizer(new MavenRepositoryAuthorizer())
+                new BasicCredentialAuthFilter.Builder<User>()
+                        .setAuthenticator(new BasicAuthenticator(configuration.defaultAccess, configuration.users))
+                        .setAuthorizer(new BasicAuthorizer())
                         .setRealm("maven-repository")
                         .buildAuthFilter()));
         environment.jersey().register(RolesAllowedDynamicFeature.class);
-        environment.jersey().register(new AuthValueFactoryProvider.Binder<>(MavenRepositoryUser.class));
+        environment.jersey().register(new AuthValueFactoryProvider.Binder<>(User.class));
 
         environment.jersey().register(new MavenRepositoryResource(remoteRepositoryDirectory, remoteRepositories));
     }

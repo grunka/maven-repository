@@ -2,11 +2,11 @@ package com.grunka.maven.authentication;
 
 import java.security.Principal;
 
-public class MavenRepositoryUser implements Principal {
+public class User implements Principal {
     private final String name;
-    private final MavenRepositoryUserLevel level;
+    private final Access level;
 
-    public MavenRepositoryUser(String name, MavenRepositoryUserLevel level) {
+    public User(String name, Access level) {
         this.name = name;
         this.level = level;
     }
@@ -16,7 +16,7 @@ public class MavenRepositoryUser implements Principal {
         return name;
     }
 
-    public MavenRepositoryUserLevel getLevel() {
+    public Access getLevel() {
         return level;
     }
 }

@@ -1,7 +1,7 @@
 package com.grunka.maven;
 
-import com.grunka.maven.authentication.MavenRepositoryUser;
-import com.grunka.maven.authentication.MavenRepositoryUserLevel;
+import com.grunka.maven.authentication.User;
+import com.grunka.maven.authentication.Access;
 import io.dropwizard.auth.Auth;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -209,8 +209,8 @@ public class MavenRepositoryResource {
 
     @HEAD
     @Path("/{path:.+}")
-    public CompletableFuture<Response> head(@PathParam("path") String path, @Auth MavenRepositoryUser user) {
-        assertUserLevel(user, MavenRepositoryUserLevel.read);
+    public CompletableFuture<Response> head(@PathParam("path") String path, @Auth User user) {
+        assertUserLevel(user, Access.read);
         if (isMavenMetadata(path)) {
             return CompletableFuture.completedFuture(notFound());
         }
@@ -219,12 +219,12 @@ public class MavenRepositoryResource {
 
     @OPTIONS
     @Path("/{path:.+}")
-    public Response options(@PathParam("path") String path, @Auth MavenRepositoryUser user) {
-        assertUserLevel(user, MavenRepositoryUserLevel.read);
+    public Response options(@PathParam("path") String path, @Auth User user) {
+        assertUserLevel(user, Access.read);
         if (isMavenMetadata(path)) {
             return notFound();
         }
-        if (user.getLevel().compareTo(MavenRepositoryUserLevel.write) < 0) {
+        if (user.getLevel().compareTo(Access.write) < 0) {
             return Response
                     .status(Response.Status.NO_CONTENT)
                     .header("Allow", "OPTIONS, HEAD, GET")
@@ -238,9 +238,9 @@ public class MavenRepositoryResource {
 
     @GET
     @Path("/{path:.+}")
-    public CompletableFuture<Response> get(@PathParam("path") String path, @Auth MavenRepositoryUser user) {
+    public CompletableFuture<Response> get(@PathParam("path") String path, @Auth User user) {
         //TODO add file listing if no file is being accessed?
-        assertUserLevel(user, MavenRepositoryUserLevel.read);
+        assertUserLevel(user, Access.read);
         if (isMavenMetadata(path)) {
             return CompletableFuture.completedFuture(notFound());
         }
@@ -249,8 +249,8 @@ public class MavenRepositoryResource {
 
     @PUT
     @Path("/{path:.+}")
-    public Response put(@PathParam("path") String path, InputStream contentStream, @Auth MavenRepositoryUser user) {
-        assertUserLevel(user, MavenRepositoryUserLevel.write);
+    public Response put(@PathParam("path") String path, InputStream contentStream, @Auth User user) {
+        assertUserLevel(user, Access.write);
         byte[] content;
         try {
             content = contentStream.readAllBytes();
@@ -334,7 +334,7 @@ public class MavenRepositoryResource {
         }
     }
 
-    private static void assertUserLevel(MavenRepositoryUser user, MavenRepositoryUserLevel level) {
+    private static void assertUserLevel(User user, Access level) {
         if (user.getLevel().compareTo(level) < 0) {
             throw new WebApplicationException(unauthorized());
         }

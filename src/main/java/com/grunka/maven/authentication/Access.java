@@ -1,5 +1,5 @@
 package com.grunka.maven.authentication;
 
-public enum MavenRepositoryUserLevel {
+public enum Access {
     none, read, write
 }
