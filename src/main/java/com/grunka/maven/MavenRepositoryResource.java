@@ -5,6 +5,9 @@ import com.grunka.maven.authentication.MavenRepositoryUserLevel;
 import io.dropwizard.auth.Auth;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.Node;
+import org.xml.sax.SAXException;
 
 import javax.annotation.security.PermitAll;
 import javax.ws.rs.GET;
@@ -17,6 +20,10 @@ import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.SoftReference;
@@ -63,7 +70,11 @@ public class MavenRepositoryResource {
         java.nio.file.Path artifactPath = storageDirectory.resolve(repository).resolve(path).toAbsolutePath();
         if (!artifactPath.startsWith(absoluteRepositoryPath)) {
             LOG.error("Path {} did not resolve inside of {}", path, absoluteRepositoryPath);
-            throw new IllegalArgumentException("Path did not end up inside repository");
+            throw new WebApplicationException(Response
+                    .status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .type(MediaType.TEXT_PLAIN_TYPE)
+                    .entity("Invalid path")
+                    .build());
         }
         return artifactPath;
     }
@@ -240,9 +251,6 @@ public class MavenRepositoryResource {
     @Path("/{path:.+}")
     public Response put(@PathParam("path") String path, InputStream contentStream, @Auth MavenRepositoryUser user) {
         assertUserLevel(user, MavenRepositoryUserLevel.write);
-        if (isMavenMetadata(path)) {
-            return Response.ok().build();
-        }
         byte[] content;
         try {
             content = contentStream.readAllBytes();
@@ -255,6 +263,14 @@ public class MavenRepositoryResource {
                     .build();
         }
         java.nio.file.Path savePath = resolveStorageDirectory(LOCAL, path);
+        if (isMavenMetadata(path)) {
+            //TODO save files in tmp temporarily, then move them to
+            if (path.endsWith(".xml")) {
+                Optional<MavenMetadata> mavenMetadata = parseXmlDocument(content).map(d -> mapDocumentToRecord(d, MavenMetadata.class));
+                LOG.debug("maven-metadata.xml: {}", new String(content));
+            }
+            return Response.ok().build();
+        }
         String fileName = savePath.getFileName().toString();
         Optional<String> acceptedSuffix = ACCEPTABLE_SUFFIXES.stream().filter(fileName::endsWith).findFirst();
         if (acceptedSuffix.isEmpty()) {
@@ -280,6 +296,40 @@ public class MavenRepositoryResource {
             } else {
                 return saveContent(path, new FileContent(savePath, content, Instant.now()), Response.Status.CREATED);
             }
+        }
+    }
+
+
+    private record MavenMetadata(String groupId, String artifactId, String version, Versioning versioning) {
+        private record Versioning(List<SnapshotVersion> snapshotVersions) {
+            private record SnapshotVersion(String extension, String value, String updated) {
+            }
+        }
+    }
+
+    private <T> T mapDocumentToRecord(Document document, Class<T> type) {
+        if (!type.isRecord()) {
+            throw new IllegalArgumentException("The type needs to be a record");
+        }
+        Node rootNode = document.getChildNodes().item(0);
+        return null;
+    }
+
+    private static Optional<Document> parseXmlDocument(byte[] content) {
+        try {
+            DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+            Document document = builder.parse(new ByteArrayInputStream(content));
+            document.getDocumentElement().normalize();
+            return Optional.of(document);
+        } catch (ParserConfigurationException e) {
+            LOG.error("Failed to configure xml parser");
+            return Optional.empty();
+        } catch (SAXException e) {
+            LOG.error("Failed to xml", e);
+            return Optional.empty();
+        } catch (IOException e) {
+            LOG.error("Failed to read input stream", e);
+            return Optional.empty();
         }
     }
 
