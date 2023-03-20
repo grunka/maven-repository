@@ -14,6 +14,7 @@ import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
@@ -291,12 +292,13 @@ public class MavenRepositoryResource {
     private static Response unauthorized() {
         return Response
                 .status(Response.Status.UNAUTHORIZED)
-                .header("WWW-Authenticate", "Basic")
+                .type(MediaType.TEXT_PLAIN_TYPE)
+                .header(HttpHeaders.WWW_AUTHENTICATE, "Basic realm=\"maven-repository\"")
                 .build();
     }
 
     private Response saveContent(String path, FileContent fileContent, Response.Status statusCode) {
-        //TODO validate hashes somehow, maybe do when metadata is put since that is "after"
+        //TODO validate hashes somehow, maybe do when metadata is put since that is "after". Also clean up "other" snapshot files that weren't uploaded "now"
         try {
             Files.createDirectories(fileContent.path().getParent());
             Files.write(fileContent.path(), fileContent.content());

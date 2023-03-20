@@ -44,6 +44,7 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
                 new BasicCredentialAuthFilter.Builder<MavenRepositoryUser>()
                         .setAuthenticator(new MavenRepositoryAuthenticator(configuration.defaultAccess, configuration.users))
                         .setAuthorizer(new MavenRepositoryAuthorizer())
+                        .setRealm("maven-repository")
                         .buildAuthFilter()));
         environment.jersey().register(RolesAllowedDynamicFeature.class);
         environment.jersey().register(new AuthValueFactoryProvider.Binder<>(MavenRepositoryUser.class));
