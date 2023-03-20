@@ -8,6 +8,8 @@ server:
 
 logging:
   level: INFO
+  loggers:
+    com.grunka.maven: DEBUG
 
 storageDirectory: storage
 remoteRepositories:
