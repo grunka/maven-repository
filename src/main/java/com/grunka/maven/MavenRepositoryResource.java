@@ -224,7 +224,7 @@ public class MavenRepositoryResource {
         if (isMavenMetadata(path)) {
             return notFound();
         }
-        if (user.getLevel().compareTo(Access.write) < 0) {
+        if (user.getAccess().compareTo(Access.write) < 0) {
             return Response
                     .status(Response.Status.NO_CONTENT)
                     .header("Allow", "OPTIONS, HEAD, GET")
@@ -335,7 +335,7 @@ public class MavenRepositoryResource {
     }
 
     private static void assertUserLevel(User user, Access level) {
-        if (user.getLevel().compareTo(level) < 0) {
+        if (user.getAccess().compareTo(level) < 0) {
             throw new WebApplicationException(unauthorized());
         }
     }

@@ -4,11 +4,11 @@ import java.security.Principal;
 
 public class User implements Principal {
     private final String name;
-    private final Access level;
+    private final Access access;
 
-    public User(String name, Access level) {
+    public User(String name, Access access) {
         this.name = name;
-        this.level = level;
+        this.access = access;
     }
 
     @Override
@@ -16,7 +16,7 @@ public class User implements Principal {
         return name;
     }
 
-    public Access getLevel() {
-        return level;
+    public Access getAccess() {
+        return access;
     }
 }

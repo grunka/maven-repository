@@ -3,7 +3,9 @@ package com.grunka.maven;
 import com.grunka.maven.authentication.BasicAuthenticator;
 import com.grunka.maven.authentication.BasicAuthorizer;
 import com.grunka.maven.authentication.DefaultUserFilter;
+import com.grunka.maven.authentication.PasswordValidator;
 import com.grunka.maven.authentication.User;
+import com.grunka.maven.authentication.UserDAO;
 import io.dropwizard.Application;
 import io.dropwizard.auth.AuthDynamicFeature;
 import io.dropwizard.auth.AuthValueFactoryProvider;
@@ -26,10 +28,10 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
     public void run(MavenRepositoryConfiguration configuration, Environment environment) throws Exception {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
 
-        Path remoteRepositoryDirectory = Path.of(configuration.storageDirectory);
-        Files.createDirectories(remoteRepositoryDirectory);
-        if (!Files.isWritable(remoteRepositoryDirectory)) {
-            throw new IllegalStateException(remoteRepositoryDirectory + " is not writable");
+        Path storageDirectory = Path.of(configuration.storageDirectory);
+        Files.createDirectories(storageDirectory);
+        if (!Files.isWritable(storageDirectory)) {
+            throw new IllegalStateException(storageDirectory + " is not writable");
         }
         LinkedHashMap<String, URI> remoteRepositories = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : configuration.remoteRepositories.entrySet()) {
@@ -40,15 +42,16 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
         }
 
         environment.jersey().register(DefaultUserFilter.class);
+        UserDAO userDAO = new UserDAO(storageDirectory.resolve("users.sqlite"), new PasswordValidator(configuration.saltBits, configuration.iterationCount, configuration.keyLength));
         environment.jersey().register(new AuthDynamicFeature(
                 new BasicCredentialAuthFilter.Builder<User>()
-                        .setAuthenticator(new BasicAuthenticator(configuration.defaultAccess, configuration.users))
+                        .setAuthenticator(new BasicAuthenticator(configuration.defaultAccess, configuration.users, userDAO))
                         .setAuthorizer(new BasicAuthorizer())
                         .setRealm("maven-repository")
                         .buildAuthFilter()));
         environment.jersey().register(RolesAllowedDynamicFeature.class);
         environment.jersey().register(new AuthValueFactoryProvider.Binder<>(User.class));
 
-        environment.jersey().register(new MavenRepositoryResource(remoteRepositoryDirectory, remoteRepositories));
+        environment.jersey().register(new MavenRepositoryResource(storageDirectory, remoteRepositories));
     }
 }
