@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.security.PermitAll;
+import javax.annotation.security.RolesAllowed;
 import javax.ws.rs.GET;
 import javax.ws.rs.HEAD;
 import javax.ws.rs.OPTIONS;
@@ -96,7 +97,7 @@ public class MavenRepositoryResource {
                     })
                     .exceptionally(t -> Response
                             .status(Response.Status.INTERNAL_SERVER_ERROR)
-                            .header("Content-Type", MediaType.TEXT_PLAIN)
+                            .type(MediaType.TEXT_PLAIN_TYPE)
                             .entity(t.getMessage())
                             .build()
                     );
@@ -185,7 +186,7 @@ public class MavenRepositoryResource {
     private static Response notFound() {
         return Response
                 .status(Response.Status.NOT_FOUND)
-                .header("Content-Type", MediaType.TEXT_PLAIN)
+                .type(MediaType.TEXT_PLAIN_TYPE)
                 .entity("Not found")
                 .build();
     }
@@ -257,7 +258,7 @@ public class MavenRepositoryResource {
             LOG.error("Failed to read PUT content for path {}", path, e);
             return Response
                     .status(Response.Status.BAD_REQUEST)
-                    .header("Content-Type", MediaType.TEXT_PLAIN)
+                    .type(MediaType.TEXT_PLAIN_TYPE)
                     .entity("Failed to read content")
                     .build();
         }
@@ -281,7 +282,7 @@ public class MavenRepositoryResource {
             if (Files.exists(savePath)) {
                 return Response
                         .status(Response.Status.BAD_REQUEST)
-                        .header("Content-Type", MediaType.TEXT_PLAIN)
+                        .type(MediaType.TEXT_PLAIN_TYPE)
                         .entity("Not allowed to update released file")
                         .build();
             } else {
@@ -307,7 +308,7 @@ public class MavenRepositoryResource {
             LOG.error("Failed to save file {}", fileContent.path(), e);
             return Response
                     .status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .header("Content-Type", MediaType.TEXT_PLAIN)
+                    .type(MediaType.TEXT_PLAIN_TYPE)
                     .entity("Failed to save content")
                     .build();
         } finally {
