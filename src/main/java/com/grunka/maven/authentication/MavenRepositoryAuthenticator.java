@@ -2,13 +2,20 @@ package com.grunka.maven.authentication;
 
 import io.dropwizard.auth.Authenticator;
 import io.dropwizard.auth.basic.BasicCredentials;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 public class MavenRepositoryAuthenticator implements Authenticator<BasicCredentials, MavenRepositoryUser> {
+    private static final Logger LOG = LoggerFactory.getLogger(MavenRepositoryAuthenticator.class);
     private final MavenRepositoryUserLevel defaultAccess;
     private final Map<MavenRepositoryUserLevel, Map<String, String>> users;
+    private final Semaphore failedLoginLimiter = new Semaphore(1, true);
 
     public MavenRepositoryAuthenticator(MavenRepositoryUserLevel defaultAccess, Map<MavenRepositoryUserLevel, Map<String, String>> users) {
         this.defaultAccess = defaultAccess;
@@ -26,6 +33,12 @@ public class MavenRepositoryAuthenticator implements Authenticator<BasicCredenti
                 return Optional.of(new MavenRepositoryUser(credentials.getUsername(), entry.getKey()));
             }
         }
-        return Optional.empty();
+        failedLoginLimiter.acquireUninterruptibly();
+        try {
+            LOG.error("Failed login for {}", credentials);
+            return Optional.empty();
+        } finally {
+            CompletableFuture.runAsync(failedLoginLimiter::release, CompletableFuture.delayedExecutor(1, TimeUnit.SECONDS));
+        }
     }
 }
