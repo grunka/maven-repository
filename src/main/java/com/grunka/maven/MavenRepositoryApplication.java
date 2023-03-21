@@ -40,6 +40,7 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
             }
             remoteRepositories.put(entry.getKey(), URI.create(entry.getValue()));
         }
+        //TODO figure out some health checks
 
         environment.jersey().register(DefaultUserFilter.class);
         UserDAO userDAO = new UserDAO(storageDirectory.resolve("users.sqlite"), new PasswordValidator(configuration.saltBits, configuration.iterationCount, configuration.keyLength));
