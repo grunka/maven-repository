@@ -270,7 +270,7 @@ public class MavenRepositoryResource {
         if (version.endsWith("-SNAPSHOT")) {
             Matcher matcher = Pattern.compile("^(.+)-(\\d{4})(\\d{2})(\\d{2})\\.(\\d{2})(\\d{2})(\\d{2})-(\\d+)(-[a-zA-Z]+)?" + fileType.replaceAll("\\.", "\\\\.") + "$").matcher(fileName);
             String updatedFileName = fileName;
-            Instant lastModified = Instant.now();
+            Optional<Instant> lastModified;
             if (matcher.matches()) {
                 String name = matcher.group(1);
                 String year = matcher.group(2);
@@ -282,13 +282,19 @@ public class MavenRepositoryResource {
                 //String buildNumber = matcher.group(8);
                 String classifier = Optional.ofNullable(matcher.group(9)).orElse("");
                 updatedFileName = name + "-SNAPSHOT" + classifier + fileType;
-                lastModified = Instant.parse(year + "-" + month + "-" + day + "T" + hour + ":" + minute + ":" + second + "Z");
+                lastModified = Optional.of(Instant.parse(year + "-" + month + "-" + day + "T" + hour + ":" + minute + ":" + second + "Z"));
+            } else {
+                lastModified = Optional.empty();
             }
             savePath = savePath.getParent().resolve(updatedFileName);
-            if (Files.exists(savePath)) {
-                return saveContent(path, new FileContent(savePath, content, lastModified), Response.Status.OK);
-            } else {
-                return saveContent(path, new FileContent(savePath, content, lastModified), Response.Status.CREATED);
+            try {
+                if (Files.exists(savePath)) {
+                    return saveContent(path, new FileContent(savePath, content, lastModified.orElse(Instant.now())), Response.Status.OK);
+                } else {
+                    return saveContent(path, new FileContent(savePath, content, lastModified.orElse(Instant.now())), Response.Status.CREATED);
+                }
+            } finally {
+                deleteFilesWithDifferentModifiedTime(savePath, lastModified);
             }
         } else {
             if (Files.exists(savePath)) {
@@ -300,6 +306,31 @@ public class MavenRepositoryResource {
             } else {
                 return saveContent(path, new FileContent(savePath, content, Instant.now()), Response.Status.CREATED);
             }
+        }
+    }
+
+    private static void deleteFilesWithDifferentModifiedTime(java.nio.file.Path savePath, Optional<Instant> lastModified) {
+        if (lastModified.isEmpty()) {
+            return;
+        }
+        try (Stream<java.nio.file.Path> list = Files.list(savePath.getParent())) {
+            List<java.nio.file.Path> filesModifiedAtOtherTimes = list.filter(file -> {
+                try {
+                    return lastModified.get().compareTo(Files.getLastModifiedTime(file).toInstant()) != 0;
+                } catch (IOException e) {
+                    LOG.error("Failed to get modified time for {}", file, e);
+                    return false;
+                }
+            }).toList();
+            for (java.nio.file.Path fileToDelete : filesModifiedAtOtherTimes) {
+                try {
+                    Files.deleteIfExists(fileToDelete);
+                } catch (IOException e) {
+                    LOG.error("Failed to delete {}", fileToDelete, e);
+                }
+            }
+        } catch (IOException e) {
+            LOG.error("Failed to list files", e);
         }
     }
 
