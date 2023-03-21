@@ -37,6 +37,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 @Path("/repository")
@@ -266,12 +268,27 @@ public class MavenRepositoryResource {
         String fileType = acceptedSuffix.get();
         String version = savePath.getParent().getFileName().toString();
         if (version.endsWith("-SNAPSHOT")) {
-            String updatedFileName = fileName.replaceFirst("-\\d{8}\\.\\d{6}-\\d+(-[a-zA-Z]+)?" + fileType.replaceAll("\\.", "\\\\.") + "$", "-SNAPSHOT$1" + fileType);
+            Matcher matcher = Pattern.compile("^(.+)-(\\d{4})(\\d{2})(\\d{2})\\.(\\d{2})(\\d{2})(\\d{2})-(\\d+)(-[a-zA-Z]+)?" + fileType.replaceAll("\\.", "\\\\.") + "$").matcher(fileName);
+            String updatedFileName = fileName;
+            Instant lastModified = Instant.now();
+            if (matcher.matches()) {
+                String name = matcher.group(1);
+                String year = matcher.group(2);
+                String month = matcher.group(3);
+                String day = matcher.group(4);
+                String hour = matcher.group(5);
+                String minute = matcher.group(6);
+                String second = matcher.group(7);
+                //String buildNumber = matcher.group(8);
+                String classifier = Optional.ofNullable(matcher.group(9)).orElse("");
+                updatedFileName = name + "-SNAPSHOT" + classifier + fileType;
+                lastModified = Instant.parse(year + "-" + month + "-" + day + "T" + hour + ":" + minute + ":" + second + "Z");
+            }
             savePath = savePath.getParent().resolve(updatedFileName);
             if (Files.exists(savePath)) {
-                return saveContent(path, new FileContent(savePath, content, Instant.now()), Response.Status.OK);
+                return saveContent(path, new FileContent(savePath, content, lastModified), Response.Status.OK);
             } else {
-                return saveContent(path, new FileContent(savePath, content, Instant.now()), Response.Status.CREATED);
+                return saveContent(path, new FileContent(savePath, content, lastModified), Response.Status.CREATED);
             }
         } else {
             if (Files.exists(savePath)) {
