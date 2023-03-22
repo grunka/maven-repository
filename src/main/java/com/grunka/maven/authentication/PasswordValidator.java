@@ -19,15 +19,15 @@ public class PasswordValidator {
         this.keyLength = keyLength;
     }
 
-    public boolean validate(String passwordHash, String password) {
-        String[] splits = passwordHash.split(":");
+    public boolean validate(String password, String hash) {
+        String[] splits = hash.split(":");
         if (splits.length == 3) {
             byte[] salt = HexFormat.of().parseHex(splits[0]);
             int iterationCount = Integer.parseInt(splits[1], 16);
             String hashed = hash(salt, password, iterationCount);
             return hashed.equals(splits[2]);
         } else {
-            return passwordHash.equals(password);
+            return hash.equals(password);
         }
     }
 
@@ -37,7 +37,10 @@ public class PasswordValidator {
             if (HexFormat.of().parseHex(splits[0]).length != saltBits / 8) {
                 return true;
             }
-            return Integer.parseInt(splits[1], 16) != iterationCount;
+            if (Integer.parseInt(splits[1], 16) != iterationCount) {
+                return true;
+            }
+            return splits[2].length() != keyLength / 8;
         } else {
             return true;
         }
