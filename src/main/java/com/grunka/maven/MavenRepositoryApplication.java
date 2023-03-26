@@ -49,6 +49,7 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
                 LOG.info("Database created at {}", databaseLocation);
                 System.exit(0);
             }
+            //TODO add user?
         }
         new MavenRepositoryApplication().run(args);
     }
