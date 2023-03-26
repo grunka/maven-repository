@@ -35,10 +35,8 @@ public class UserDAO {
 
     public static void createDatabase(Path userDatabaseLocation) {
         try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + userDatabaseLocation)) {
-            if (!Files.exists(userDatabaseLocation)){
-                try (PreparedStatement preparedStatement = connection.prepareStatement(CREATE_TABLE_SQL)) {
-                    preparedStatement.executeUpdate();
-                }
+            try (PreparedStatement preparedStatement = connection.prepareStatement(CREATE_TABLE_SQL)) {
+                preparedStatement.executeUpdate();
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -46,8 +44,7 @@ public class UserDAO {
     }
 
     public Optional<User> validate(String username, String password) {
-        boolean databaseExists = Files.exists(userDatabaseLocation);
-        if (!databaseExists) {
+        if (!Files.exists(userDatabaseLocation)) {
             return Optional.empty();
         }
         Optional<String> hash = getHash(username);
