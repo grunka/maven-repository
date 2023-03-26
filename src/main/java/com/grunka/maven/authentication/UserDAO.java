@@ -33,15 +33,15 @@ public class UserDAO {
         this.passwordValidator = passwordValidator;
     }
 
-    private void createDatabase() {
-        try (Connection connection = getConnection()) {
-            if (!Files.exists(userDatabaseLocation)) {
+    public static void createDatabase(Path userDatabaseLocation) {
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + userDatabaseLocation)) {
+            if (!Files.exists(userDatabaseLocation)){
                 try (PreparedStatement preparedStatement = connection.prepareStatement(CREATE_TABLE_SQL)) {
                     preparedStatement.executeUpdate();
                 }
             }
         } catch (SQLException e) {
-            LOG.error("Failed to create database", e);
+            throw new RuntimeException(e);
         }
     }
 

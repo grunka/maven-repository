@@ -12,6 +12,8 @@ import io.dropwizard.auth.AuthValueFactoryProvider;
 import io.dropwizard.auth.basic.BasicCredentialAuthFilter;
 import io.dropwizard.setup.Environment;
 import org.glassfish.jersey.server.filter.RolesAllowedDynamicFeature;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.nio.file.Files;
@@ -21,7 +23,25 @@ import java.util.Map;
 import java.util.TimeZone;
 
 public class MavenRepositoryApplication extends Application<MavenRepositoryConfiguration> {
+    private static final Logger LOG = LoggerFactory.getLogger(MavenRepositoryApplication.class);
+
     public static void main(String[] args) throws Exception {
+        if (args.length == 2) {
+            if ("create-database".equals(args[0])) {
+                Path databaseLocation = Path.of(args[1]);
+                if (Files.exists(databaseLocation)) {
+                    LOG.error("Database file already exists {}", databaseLocation);
+                    System.exit(1);
+                }
+                if (!Files.isWritable(databaseLocation)) {
+                    LOG.error("Database file location is not writable {}", databaseLocation);
+                    System.exit(1);
+                }
+                UserDAO.createDatabase(databaseLocation);
+                LOG.info("Database created at {}", databaseLocation);
+                System.exit(0);
+            }
+        }
         new MavenRepositoryApplication().run(args);
     }
     @Override
