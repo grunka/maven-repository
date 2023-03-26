@@ -1,5 +1,6 @@
 package com.grunka.maven;
 
+import com.codahale.metrics.health.HealthCheck;
 import com.grunka.maven.authentication.BasicAuthenticator;
 import com.grunka.maven.authentication.BasicAuthorizer;
 import com.grunka.maven.authentication.DefaultUserFilter;
@@ -18,6 +19,9 @@ import org.slf4j.LoggerFactory;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.TimeZone;
@@ -60,7 +64,20 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
             }
             remoteRepositories.put(entry.getKey(), URI.create(entry.getValue()));
         }
-        //TODO figure out some health checks
+
+        Instant startedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        environment.healthChecks().register("uptime", new HealthCheck() {
+            @Override
+            protected Result check() {
+                return Result.healthy(String.valueOf(Duration.between(startedAt, Instant.now()).toSeconds()));
+            }
+        });
+        environment.healthChecks().register("startedAt", new HealthCheck() {
+            @Override
+            protected Result check() {
+                return Result.healthy(startedAt.toString());
+            }
+        });
 
         environment.jersey().register(DefaultUserFilter.class);
         UserDAO userDAO = new UserDAO(storageDirectory.resolve("users.sqlite"), new PasswordValidator(configuration.saltBits, configuration.iterationCount, configuration.keyLength));
