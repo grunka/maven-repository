@@ -70,6 +70,7 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
             }
             remoteRepositories.put(entry.getKey(), URI.create(entry.getValue()));
         }
+        environment.jersey().register(new IndexResource());
 
         Instant startedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         environment.healthChecks().register("uptime", new HealthCheck() {
