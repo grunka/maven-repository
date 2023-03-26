@@ -1,11 +1,13 @@
 package com.grunka.maven;
 
 import com.codahale.metrics.health.HealthCheck;
+import com.grunka.maven.authentication.Access;
 import com.grunka.maven.authentication.BasicAuthenticator;
 import com.grunka.maven.authentication.BasicAuthorizer;
 import com.grunka.maven.authentication.DefaultUserFilter;
 import com.grunka.maven.authentication.PasswordValidator;
 import com.grunka.maven.authentication.User;
+import com.grunka.maven.authentication.UserAuthenticator;
 import com.grunka.maven.authentication.UserDAO;
 import io.dropwizard.Application;
 import io.dropwizard.auth.AuthDynamicFeature;
@@ -23,7 +25,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TimeZone;
 
 public class MavenRepositoryApplication extends Application<MavenRepositoryConfiguration> {
@@ -48,6 +52,7 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
         }
         new MavenRepositoryApplication().run(args);
     }
+
     @Override
     public void run(MavenRepositoryConfiguration configuration, Environment environment) throws Exception {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
@@ -79,17 +84,39 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
             }
         });
 
+        configureAuthentication(configuration, environment, storageDirectory.resolve("users.sqlite"));
+
+        environment.jersey().register(new MavenRepositoryResource(storageDirectory, remoteRepositories));
+    }
+
+    private static void configureAuthentication(MavenRepositoryConfiguration configuration, Environment environment, Path userDatabaseLocation) {
         environment.jersey().register(DefaultUserFilter.class);
-        UserDAO userDAO = new UserDAO(storageDirectory.resolve("users.sqlite"), new PasswordValidator(configuration.saltBits, configuration.iterationCount, configuration.keyLength));
+        UserDAO userDAO = new UserDAO(userDatabaseLocation, new PasswordValidator(configuration.saltBits, configuration.iterationCount, configuration.keyLength));
+        UserAuthenticator defaultUserAuthenticator = (username, password) -> {
+            if (DefaultUserFilter.DEFAULT_USERNAME.equals(username) && DefaultUserFilter.DEFAULT_PASSWORD.equals(password)) {
+                return Optional.of(new User(DefaultUserFilter.DEFAULT_USERNAME, configuration.defaultAccess));
+            }
+            return Optional.empty();
+        };
+        UserAuthenticator configurationAuthenticator = (username, password) -> {
+            for (Map.Entry<Access, Map<String, String>> entry : configuration.users.entrySet()) {
+                Map<String, String> logins = entry.getValue() != null ? entry.getValue() : Map.of();
+                if (password.equals(logins.get(username))) {
+                    return Optional.of(new User(username, entry.getKey()));
+                }
+            }
+            return Optional.empty();
+        };
         environment.jersey().register(new AuthDynamicFeature(
                 new BasicCredentialAuthFilter.Builder<User>()
-                        .setAuthenticator(new BasicAuthenticator(configuration.defaultAccess, configuration.users, userDAO))
+                        .setAuthenticator(new BasicAuthenticator(List.of(
+                                defaultUserAuthenticator,
+                                userDAO::authenticate,
+                                configurationAuthenticator)))
                         .setAuthorizer(new BasicAuthorizer())
                         .setRealm("maven-repository")
                         .buildAuthFilter()));
         environment.jersey().register(RolesAllowedDynamicFeature.class);
         environment.jersey().register(new AuthValueFactoryProvider.Binder<>(User.class));
-
-        environment.jersey().register(new MavenRepositoryResource(storageDirectory, remoteRepositories));
     }
 }

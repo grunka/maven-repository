@@ -43,7 +43,7 @@ public class UserDAO {
         }
     }
 
-    public Optional<User> validate(String username, String password) {
+    public Optional<User> authenticate(String username, String password) {
         if (!Files.exists(userDatabaseLocation)) {
             return Optional.empty();
         }

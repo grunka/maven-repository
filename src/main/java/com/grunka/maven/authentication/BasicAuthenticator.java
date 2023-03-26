@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.ref.SoftReference;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -15,16 +16,12 @@ import java.util.concurrent.TimeUnit;
 
 public class BasicAuthenticator implements Authenticator<BasicCredentials, User> {
     private static final Logger LOG = LoggerFactory.getLogger(BasicAuthenticator.class);
-    private final Access defaultAccess;
-    private final Map<Access, Map<String, String>> users;
-    private final UserDAO userDAO;
+    private final List<UserAuthenticator> authenticators;
     private final Semaphore failedLoginLimiter = new Semaphore(1, true);
     private final Map<BasicCredentials, SoftReference<CompletableFuture<Optional<User>>>> authenticationCache = new ConcurrentHashMap<>();
 
-    public BasicAuthenticator(Access defaultAccess, Map<Access, Map<String, String>> users, UserDAO userDAO) {
-        this.defaultAccess = defaultAccess;
-        this.users = users;
-        this.userDAO = userDAO;
+    public BasicAuthenticator(List<UserAuthenticator> authenticators) {
+        this.authenticators = authenticators;
     }
 
     @Override
@@ -35,7 +32,7 @@ public class BasicAuthenticator implements Authenticator<BasicCredentials, User>
                 if (reference != null && reference.get() != null) {
                     return reference;
                 }
-                return new SoftReference<>(CompletableFuture.supplyAsync(() -> authenticateCredentials(c)));
+                return new SoftReference<>(CompletableFuture.supplyAsync(() -> authenticateCredentials(c.getUsername(), c.getPassword())));
             }).get();
         } while (userFuture == null);
         Optional<User> user = userFuture.join();
@@ -51,20 +48,11 @@ public class BasicAuthenticator implements Authenticator<BasicCredentials, User>
         }
     }
 
-    private Optional<User> authenticateCredentials(BasicCredentials credentials) {
-        if (DefaultUserFilter.DEFAULT_USERNAME.equals(credentials.getUsername()) && DefaultUserFilter.DEFAULT_PASSWORD.equals(credentials.getPassword())) {
-            return Optional.of(new User(DefaultUserFilter.DEFAULT_USERNAME, defaultAccess));
-        }
-        Optional<User> userFromDAO = userDAO.validate(credentials.getUsername(), credentials.getPassword());
-        if (userFromDAO.isPresent()) {
-            return userFromDAO;
-        }
-        for (Map.Entry<Access, Map<String, String>> entry : users.entrySet()) {
-            Map<String, String> logins = entry.getValue() != null ? entry.getValue() : Map.of();
-            if (credentials.getPassword().equals(logins.get(credentials.getUsername()))) {
-                return Optional.of(new User(credentials.getUsername(), entry.getKey()));
-            }
-        }
-        return Optional.empty();
+    private Optional<User> authenticateCredentials(String username, String password) {
+        return authenticators.stream()
+                .map(authenticator -> authenticator.authenticate(username, password))
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .findFirst();
     }
 }
