@@ -18,17 +18,15 @@ import org.glassfish.jersey.server.filter.RolesAllowedDynamicFeature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Console;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.TimeZone;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class MavenRepositoryApplication extends Application<MavenRepositoryConfiguration> {
     private static final Logger LOG = LoggerFactory.getLogger(MavenRepositoryApplication.class);
@@ -122,28 +120,31 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
 
     private static void configureAuthentication(MavenRepositoryConfiguration configuration, Environment environment, Path userDatabaseLocation) {
         environment.jersey().register(DefaultUserFilter.class);
-        UserDAO userDAO = new UserDAO(userDatabaseLocation, new PasswordValidator(configuration.saltBits, configuration.iterationCount, configuration.keyLength));
-        UserAuthenticator defaultUserAuthenticator = (username, password) -> {
+        List<UserAuthenticator> authenticators = new ArrayList<>();
+        authenticators.add((username, password) -> {
             if (DefaultUserFilter.DEFAULT_USERNAME.equals(username) && DefaultUserFilter.DEFAULT_PASSWORD.equals(password)) {
                 return Optional.of(new User(DefaultUserFilter.DEFAULT_USERNAME, configuration.defaultAccess));
             }
             return Optional.empty();
-        };
-        UserAuthenticator configurationAuthenticator = (username, password) -> {
-            for (Map.Entry<Access, Map<String, String>> entry : configuration.users.entrySet()) {
-                Map<String, String> logins = entry.getValue() != null ? entry.getValue() : Map.of();
-                if (password.equals(logins.get(username))) {
-                    return Optional.of(new User(username, entry.getKey()));
+        });
+        if (configuration.users != null) {
+            authenticators.add((username, password) -> {
+                for (Map.Entry<Access, Map<String, String>> entry : configuration.users.entrySet()) {
+                    Map<String, String> logins = entry.getValue() != null ? entry.getValue() : Map.of();
+                    if (password.equals(logins.get(username))) {
+                        return Optional.of(new User(username, entry.getKey()));
+                    }
                 }
-            }
-            return Optional.empty();
-        };
+                return Optional.empty();
+            });
+        }
+        if (configuration.sqliteDatabase != null) {
+            UserDAO userDAO = new UserDAO(Path.of(configuration.sqliteDatabase), new PasswordValidator(configuration.saltBits, configuration.iterationCount, configuration.keyLength));
+            authenticators.add(userDAO::authenticate);
+        }
         environment.jersey().register(new AuthDynamicFeature(
                 new BasicCredentialAuthFilter.Builder<User>()
-                        .setAuthenticator(new BasicAuthenticator(List.of(
-                                defaultUserAuthenticator,
-                                userDAO::authenticate,
-                                configurationAuthenticator)))
+                        .setAuthenticator(new BasicAuthenticator(authenticators))
                         .setAuthorizer(new BasicAuthorizer())
                         .setRealm("maven-repository")
                         .buildAuthFilter()));
