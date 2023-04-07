@@ -134,6 +134,26 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
                 }
             }
         });
+        bootstrap.addCommand(new Command("generate-password-hash", "Generates a password hash") {
+            @Override
+            public void configure(Subparser subparser) {
+            }
+
+            @Override
+            public void run(Bootstrap<?> bootstrap, Namespace namespace) {
+                Console console = System.console();
+                if (console == null) {
+                    LOG.error("Not able to read from console");
+                    System.exit(1);
+                }
+                String password = new String(console.readPassword("Password: "));
+                MavenRepositoryConfiguration defaultConfiguration = new MavenRepositoryConfiguration();
+                PasswordValidator passwordValidator = new PasswordValidator(defaultConfiguration.saltBits, defaultConfiguration.iterationCount, defaultConfiguration.keyLength);
+                String hash = passwordValidator.createHash(password);
+                System.out.println(hash);
+                System.exit(0);
+            }
+        });
         bootstrap.addCommand(new Command("set-user-access", "Set access level for a user in the sqlite database") {
             @Override
             public void configure(Subparser subparser) {
@@ -225,6 +245,7 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
 
     private static void configureAuthentication(MavenRepositoryConfiguration configuration, Environment environment) {
         environment.jersey().register(DefaultUserFilter.class);
+        PasswordValidator passwordValidator = new PasswordValidator(configuration.saltBits, configuration.iterationCount, configuration.keyLength);
         List<UserAuthenticator> authenticators = new ArrayList<>();
         authenticators.add((username, password) -> {
             if (DefaultUserFilter.DEFAULT_USERNAME.equals(username) && DefaultUserFilter.DEFAULT_PASSWORD.equals(password)) {
@@ -236,7 +257,7 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
             authenticators.add((username, password) -> {
                 for (Map.Entry<Access, Map<String, String>> entry : configuration.users.entrySet()) {
                     Map<String, String> logins = entry.getValue() != null ? entry.getValue() : Map.of();
-                    if (password.equals(logins.get(username))) {
+                    if (passwordValidator.validate(password, logins.get(username))) {
                         return Optional.of(new User(username, entry.getKey()));
                     }
                 }
@@ -244,7 +265,7 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
             });
         }
         if (configuration.sqliteDatabase != null) {
-            UserDAO userDAO = new UserDAO(Path.of(configuration.sqliteDatabase), new PasswordValidator(configuration.saltBits, configuration.iterationCount, configuration.keyLength));
+            UserDAO userDAO = new UserDAO(Path.of(configuration.sqliteDatabase), passwordValidator);
             authenticators.add(userDAO::authenticate);
         }
         environment.jersey().register(new AuthDynamicFeature(

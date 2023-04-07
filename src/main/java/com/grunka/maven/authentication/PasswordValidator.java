@@ -22,6 +22,9 @@ public class PasswordValidator {
     }
 
     public boolean validate(String password, String hash) {
+        if (password == null || hash == null) {
+            return false;
+        }
         if (hash.startsWith("*")) {
             return password(password).equals(hash);
         }
