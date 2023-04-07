@@ -60,6 +60,23 @@ public class UserDAO {
         return Optional.empty();
     }
 
+    public boolean addUser(String username, String password, Access access) {
+        databaseLock.lock();
+        try (Connection connection = getConnection()) {
+            try (PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO users (username, password, access) VALUES (?, ?, ?)")) {
+                preparedStatement.setString(1, username);
+                preparedStatement.setString(2, passwordValidator.createHash(password));
+                preparedStatement.setString(3, access.toString());
+                return preparedStatement.executeUpdate() == 1;
+            }
+        } catch (SQLException e) {
+            LOG.error("Failed to add user {}", username, e);
+            return false;
+        } finally {
+            databaseLock.unlock();
+        }
+    }
+
     private Optional<String> getHash(String username) {
         databaseLock.lock();
         try (Connection connection = getConnection()) {

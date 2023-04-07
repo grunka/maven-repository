@@ -49,7 +49,36 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
                 LOG.info("Database created at {}", databaseLocation);
                 System.exit(0);
             }
-            //TODO add user?
+            if ("add-user".equals(args[0])) {
+                Path databaseLocation = Path.of(args[1]);
+                if (!Files.exists(databaseLocation)) {
+                    LOG.error("Could not find database at {}", databaseLocation);
+                    System.exit(1);
+                }
+                MavenRepositoryConfiguration defaultConfiguration = new MavenRepositoryConfiguration();
+                PasswordValidator passwordValidator = new PasswordValidator(defaultConfiguration.saltBits, defaultConfiguration.iterationCount, defaultConfiguration.keyLength);
+                Console console = System.console();
+                if (console == null) {
+                    LOG.error("Not able to read from console");
+                    System.exit(1);
+                }
+                String username = console.readLine("Username: ");
+                String password = new String(console.readPassword("Password: "));
+                String possibleAccess = Arrays.stream(Access.values()).map(Objects::toString).collect(Collectors.joining(", "));
+                Optional<Access> access = Optional.empty();
+                do {
+                    String accessInput = console.readLine("Access(" + possibleAccess + "): ");
+                    try {
+                        access = Optional.of(Access.valueOf(accessInput));
+                    } catch (IllegalArgumentException e) {
+                        LOG.error("{} is not a valid access level", accessInput);
+                    }
+                } while (access.isEmpty());
+                UserDAO userDAO = new UserDAO(databaseLocation, passwordValidator);
+                userDAO.addUser(username, password, access.get());
+                LOG.info("User {} added in {}", username, databaseLocation);
+                System.exit(0);
+            }
         }
         new MavenRepositoryApplication().run(args);
     }
