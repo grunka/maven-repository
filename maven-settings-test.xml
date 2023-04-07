@@ -6,7 +6,7 @@
         <mirror>
             <id>testing-repository</id>
             <name>Testing Repository</name>
-            <url>http://localhost:9999/repository</url>
+            <url>http://localhost:8888/repository</url>
             <mirrorOf>*</mirrorOf>
         </mirror>
     </mirrors>
@@ -36,7 +36,7 @@
             <repositories>
                 <repository>
                     <id>testing-snapshots</id>
-                    <url>http://localhost:9999/repository</url>
+                    <url>http://localhost:8888/repository</url>
                     <snapshots>
                         <enabled>true</enabled>
                         <checksumPolicy>fail</checksumPolicy>
