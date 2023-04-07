@@ -1,15 +1,14 @@
 package com.grunka.maven;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,8 +43,7 @@ public class IndexResource {
     @GET
     @Path("/pom.png")
     public Response pomPng() {
-        List<String> poms = List.of("/pom.png", "/pom2.png");
-        return getBytes(poms.get((int) Math.round(Math.random() * (poms.size() - 1))))
+        return getBytes("/pom.png")
                 .map(b -> Response.ok(b).type("image/png").build())
                 .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build());
     }
