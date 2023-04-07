@@ -3,20 +3,14 @@ package com.grunka.maven;
 import com.grunka.maven.authentication.Access;
 import com.grunka.maven.authentication.User;
 import io.dropwizard.auth.Auth;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import jakarta.annotation.security.PermitAll;
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.HEAD;
-import jakarta.ws.rs.OPTIONS;
-import jakarta.ws.rs.PUT;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.PathParam;
-import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.SoftReference;
@@ -30,11 +24,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -49,15 +39,15 @@ public class MavenRepositoryResource {
     private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
     static final String LOCAL = "local";
     private final java.nio.file.Path storageDirectory;
-    private final LinkedHashMap<String, URI> remoteRepositories;
+    private final LinkedHashMap<String, Repository> remoteRepositories;
     private final Map<java.nio.file.Path, SoftReference<CompletableFuture<FileContent>>> fileCache = new ConcurrentHashMap<>();
 
-    public MavenRepositoryResource(java.nio.file.Path storageDirectory, LinkedHashMap<String, URI> remoteRepositories) {
+    public MavenRepositoryResource(java.nio.file.Path storageDirectory, LinkedHashMap<String, Repository> remoteRepositories) {
         this.storageDirectory = storageDirectory;
         this.remoteRepositories = remoteRepositories;
     }
 
-    private record FileRequest(String repository, URI uri) {
+    private record FileRequest(String repositoryName, Repository repository, String path) {
     }
 
     private java.nio.file.Path resolveStorageDirectory(String repository, String path) {
@@ -91,8 +81,8 @@ public class MavenRepositoryResource {
                 return CompletableFuture.completedFuture(notFound());
             }
             List<FileRequest> requests = new ArrayList<>();
-            for (Map.Entry<String, URI> entry : remoteRepositories.entrySet()) {
-                requests.add(new FileRequest(entry.getKey(), entry.getValue().resolve(path)));
+            for (Map.Entry<String, Repository> entry : remoteRepositories.entrySet()) {
+                requests.add(new FileRequest(entry.getKey(), entry.getValue(), path));
             }
 
             return getRemoteFile(path, requests)
@@ -119,13 +109,22 @@ public class MavenRepositoryResource {
             return CompletableFuture.completedFuture(null);
         }
         FileRequest fileRequest = requests.remove(0);
-        HttpRequest httpRequest = HttpRequest.newBuilder().GET().uri(fileRequest.uri()).build();
-        java.nio.file.Path targetFile = resolveStorageDirectory(fileRequest.repository(), path);
-        LOG.info("Downloading {} from remote {}", path, fileRequest.uri());
+        URI remotePath = fileRequest.repository().url().resolve(fileRequest.path());
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .GET()
+                .uri(remotePath);
+        if (fileRequest.repository().username() != null && fileRequest.repository().password() != null) {
+            String usernameAndPassword = fileRequest.repository().username() + ":" + fileRequest.repository().password();
+            String authorizationHeader = "Basic " + Base64.getEncoder().encodeToString(usernameAndPassword.getBytes());
+            builder = builder.header(HttpHeaders.AUTHORIZATION, authorizationHeader);
+        }
+        HttpRequest httpRequest = builder.build();
+        java.nio.file.Path targetFile = resolveStorageDirectory(fileRequest.repositoryName(), path);
+        LOG.info("Downloading {} from remote {}", path, remotePath);
         return HTTP_CLIENT.sendAsync(httpRequest, HttpResponse.BodyHandlers.ofByteArray())
                 .thenCompose(response -> {
                     if (response.statusCode() != 200) {
-                        LOG.error("Got status code {} from {}", response.statusCode(), fileRequest.uri());
+                        LOG.error("Got status code {} from {}", response.statusCode(), remotePath);
                         return getRemoteFile(path, requests);
                     }
                     Optional<ZonedDateTime> lastModified = response.headers()

@@ -16,7 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Console;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -215,13 +214,6 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
         if (!Files.isWritable(storageDirectory)) {
             throw new IllegalStateException(storageDirectory + " is not writable");
         }
-        LinkedHashMap<String, URI> remoteRepositories = new LinkedHashMap<>();
-        for (Map.Entry<String, String> entry : configuration.remoteRepositories.entrySet()) {
-            if (MavenRepositoryResource.LOCAL.equals(entry.getKey())) {
-                throw new IllegalArgumentException("The name 'local' is reserved for the local repository");
-            }
-            remoteRepositories.put(entry.getKey(), URI.create(entry.getValue()));
-        }
         environment.jersey().register(new IndexResource());
 
         Instant startedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
@@ -240,7 +232,7 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
 
         configureAuthentication(configuration, environment);
 
-        environment.jersey().register(new MavenRepositoryResource(storageDirectory, remoteRepositories));
+        environment.jersey().register(new MavenRepositoryResource(storageDirectory, configuration.remoteRepositories));
     }
 
     private static void configureAuthentication(MavenRepositoryConfiguration configuration, Environment environment) {

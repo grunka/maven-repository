@@ -13,7 +13,12 @@ logging:
 
 storageDirectory: storage
 remoteRepositories:
-  central: https://repo1.maven.org/maven2/
+  central:
+    url: https://repo1.maven.org/maven2/
+#  another:
+#    url: https://repo1.maven.org/maven2/
+#    username: user
+#    password: pass
 
 defaultAccess: none
 
