@@ -4,6 +4,7 @@ import com.grunka.maven.authentication.Access;
 import io.dropwizard.core.Configuration;
 
 import jakarta.validation.constraints.NotNull;
+
 import java.util.Map;
 
 public class MavenRepositoryConfiguration extends Configuration {
@@ -13,7 +14,8 @@ public class MavenRepositoryConfiguration extends Configuration {
     public Map<String, String> remoteRepositories;
     @NotNull
     public Access defaultAccess;
-    public Map<Access, Map<String, String>> users = Map.of();
+    public Map<Access, Map<String, String>> users = null;
+    public String sqliteDatabase = null;
     public int saltBits = 128;
     public int iterationCount = 500_000;
     public int keyLength = 512;

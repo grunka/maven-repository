@@ -22,3 +22,5 @@ defaultAccess: none
 #    read-user: read-password
 #  write:
 #    deploy-user: deploy-password
+
+#sqliteDatabase: jdbc:sqlite:storage/users.sqlite
