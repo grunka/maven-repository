@@ -1,19 +1,16 @@
 package com.grunka.maven;
 
 import com.codahale.metrics.health.HealthCheck;
-import com.grunka.maven.authentication.Access;
-import com.grunka.maven.authentication.BasicAuthenticator;
-import com.grunka.maven.authentication.BasicAuthorizer;
-import com.grunka.maven.authentication.DefaultUserFilter;
-import com.grunka.maven.authentication.PasswordValidator;
-import com.grunka.maven.authentication.User;
-import com.grunka.maven.authentication.UserAuthenticator;
-import com.grunka.maven.authentication.UserDAO;
-import io.dropwizard.core.Application;
+import com.grunka.maven.authentication.*;
 import io.dropwizard.auth.AuthDynamicFeature;
 import io.dropwizard.auth.AuthValueFactoryProvider;
 import io.dropwizard.auth.basic.BasicCredentialAuthFilter;
+import io.dropwizard.core.Application;
+import io.dropwizard.core.cli.Command;
+import io.dropwizard.core.setup.Bootstrap;
 import io.dropwizard.core.setup.Environment;
+import net.sourceforge.argparse4j.inf.Namespace;
+import net.sourceforge.argparse4j.inf.Subparser;
 import org.glassfish.jersey.server.filter.RolesAllowedDynamicFeature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,29 +29,55 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
     private static final Logger LOG = LoggerFactory.getLogger(MavenRepositoryApplication.class);
 
     public static void main(String[] args) throws Exception {
-        if (args.length == 2) {
-            if ("create-database".equals(args[0])) {
-                Path databaseLocation = Path.of(args[1]);
+        new MavenRepositoryApplication().run(args);
+    }
+
+    @Override
+    public void initialize(Bootstrap<MavenRepositoryConfiguration> bootstrap) {
+        bootstrap.addCommand(new Command("create-database", "Creates a new sqlite database") {
+            @Override
+            public void configure(Subparser subparser) {
+                subparser.addArgument("-f", "--file")
+                        .dest("file")
+                        .type(String.class)
+                        .required(true)
+                        .help("Location of the sqlite database file");
+            }
+
+            @Override
+            public void run(Bootstrap<?> bootstrap, Namespace namespace) {
+                Path databaseLocation = Path.of(namespace.getString("file"));
                 if (Files.exists(databaseLocation)) {
                     LOG.error("Database file already exists {}", databaseLocation);
                     System.exit(1);
                 }
-                if (!Files.isWritable(databaseLocation)) {
-                    LOG.error("Database file location is not writable {}", databaseLocation);
+                try {
+                    UserDAO.createDatabase(databaseLocation);
+                    LOG.info("Database created at {}", databaseLocation);
+                    System.exit(0);
+                } catch (Exception e) {
+                    LOG.error("Failed to create database at {}", databaseLocation, e);
                     System.exit(1);
                 }
-                UserDAO.createDatabase(databaseLocation);
-                LOG.info("Database created at {}", databaseLocation);
-                System.exit(0);
             }
-            if ("add-user".equals(args[0])) {
-                Path databaseLocation = Path.of(args[1]);
+        });
+        bootstrap.addCommand(new Command("add-user", "Add user to sqlite database") {
+            @Override
+            public void configure(Subparser subparser) {
+                subparser.addArgument("-f", "--file")
+                        .dest("file")
+                        .type(String.class)
+                        .required(true)
+                        .help("Location of the sqlite database file");
+            }
+
+            @Override
+            public void run(Bootstrap<?> bootstrap, Namespace namespace) {
+                Path databaseLocation = Path.of(namespace.getString("file"));
                 if (!Files.exists(databaseLocation)) {
                     LOG.error("Could not find database at {}", databaseLocation);
                     System.exit(1);
                 }
-                MavenRepositoryConfiguration defaultConfiguration = new MavenRepositoryConfiguration();
-                PasswordValidator passwordValidator = new PasswordValidator(defaultConfiguration.saltBits, defaultConfiguration.iterationCount, defaultConfiguration.keyLength);
                 Console console = System.console();
                 if (console == null) {
                     LOG.error("Not able to read from console");
@@ -62,23 +85,105 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
                 }
                 String username = console.readLine("Username: ");
                 String password = new String(console.readPassword("Password: "));
-                String possibleAccess = Arrays.stream(Access.values()).map(Objects::toString).collect(Collectors.joining(", "));
-                Optional<Access> access = Optional.empty();
-                do {
-                    String accessInput = console.readLine("Access(" + possibleAccess + "): ");
-                    try {
-                        access = Optional.of(Access.valueOf(accessInput));
-                    } catch (IllegalArgumentException e) {
-                        LOG.error("{} is not a valid access level", accessInput);
-                    }
-                } while (access.isEmpty());
+                Access access = readAccessFromConsole(console);
+                MavenRepositoryConfiguration defaultConfiguration = new MavenRepositoryConfiguration();
+                PasswordValidator passwordValidator = new PasswordValidator(defaultConfiguration.saltBits, defaultConfiguration.iterationCount, defaultConfiguration.keyLength);
                 UserDAO userDAO = new UserDAO(databaseLocation, passwordValidator);
-                userDAO.addUser(username, password, access.get());
-                LOG.info("User {} added in {}", username, databaseLocation);
-                System.exit(0);
+                if (userDAO.addUser(username, password, access)) {
+                    LOG.info("User {} added in {}", username, databaseLocation);
+                    System.exit(0);
+                } else {
+                    LOG.error("Failed to add user {}", username);
+                    System.exit(1);
+                }
             }
-        }
-        new MavenRepositoryApplication().run(args);
+        });
+        bootstrap.addCommand(new Command("set-user-password", "Set password for existing user in database") {
+            @Override
+            public void configure(Subparser subparser) {
+                subparser.addArgument("-f", "--file")
+                        .dest("file")
+                        .type(String.class)
+                        .required(true)
+                        .help("Location of the sqlite database file");
+            }
+
+            @Override
+            public void run(Bootstrap<?> bootstrap, Namespace namespace) {
+                Path databaseLocation = Path.of(namespace.getString("file"));
+                if (!Files.exists(databaseLocation)) {
+                    LOG.error("Could not find database at {}", databaseLocation);
+                    System.exit(1);
+                }
+                Console console = System.console();
+                if (console == null) {
+                    LOG.error("Not able to read from console");
+                    System.exit(1);
+                }
+                String username = console.readLine("Username: ");
+                String password = new String(console.readPassword("Password: "));
+                MavenRepositoryConfiguration defaultConfiguration = new MavenRepositoryConfiguration();
+                PasswordValidator passwordValidator = new PasswordValidator(defaultConfiguration.saltBits, defaultConfiguration.iterationCount, defaultConfiguration.keyLength);
+                UserDAO userDAO = new UserDAO(databaseLocation, passwordValidator);
+                if (userDAO.setPassword(username, password)) {
+                    LOG.info("Password updated for user {}", username);
+                    System.exit(0);
+                } else {
+                    LOG.error("Failed to update password for user {}", username);
+                    System.exit(1);
+                }
+            }
+        });
+        bootstrap.addCommand(new Command("set-user-access", "Set access level for a user in the sqlite database") {
+            @Override
+            public void configure(Subparser subparser) {
+                subparser.addArgument("-f", "--file")
+                        .dest("file")
+                        .type(String.class)
+                        .required(true)
+                        .help("Location of the sqlite database file");
+            }
+
+            @Override
+            public void run(Bootstrap<?> bootstrap, Namespace namespace) {
+                Path databaseLocation = Path.of(namespace.getString("file"));
+                if (!Files.exists(databaseLocation)) {
+                    LOG.error("Could not find database at {}", databaseLocation);
+                    System.exit(1);
+                }
+                Console console = System.console();
+                if (console == null) {
+                    LOG.error("Not able to read from console");
+                    System.exit(1);
+                }
+                String username = console.readLine("Username: ");
+                Access access = readAccessFromConsole(console);
+                MavenRepositoryConfiguration defaultConfiguration = new MavenRepositoryConfiguration();
+                PasswordValidator passwordValidator = new PasswordValidator(defaultConfiguration.saltBits, defaultConfiguration.iterationCount, defaultConfiguration.keyLength);
+                UserDAO userDAO = new UserDAO(databaseLocation, passwordValidator);
+                if (userDAO.setAccess(username, access)) {
+                    LOG.info("User access set to {} for user {}", access, username);
+                    System.exit(0);
+                } else {
+                    LOG.error("Failed to update access to {} for user {}", access, username);
+                    System.exit(1);
+                }
+            }
+        });
+    }
+
+    private static Access readAccessFromConsole(Console console) {
+        String possibleAccess = Arrays.stream(Access.values()).map(Objects::toString).collect(Collectors.joining(", "));
+        Optional<Access> access = Optional.empty();
+        do {
+            String accessInput = console.readLine("Access(" + possibleAccess + "): ");
+            try {
+                access = Optional.of(Access.valueOf(accessInput));
+            } catch (IllegalArgumentException e) {
+                LOG.error("{} is not a valid access level", accessInput);
+            }
+        } while (access.isEmpty());
+        return access.get();
     }
 
     @Override
@@ -113,12 +218,12 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
             }
         });
 
-        configureAuthentication(configuration, environment, storageDirectory.resolve("users.sqlite"));
+        configureAuthentication(configuration, environment);
 
         environment.jersey().register(new MavenRepositoryResource(storageDirectory, remoteRepositories));
     }
 
-    private static void configureAuthentication(MavenRepositoryConfiguration configuration, Environment environment, Path userDatabaseLocation) {
+    private static void configureAuthentication(MavenRepositoryConfiguration configuration, Environment environment) {
         environment.jersey().register(DefaultUserFilter.class);
         List<UserAuthenticator> authenticators = new ArrayList<>();
         authenticators.add((username, password) -> {

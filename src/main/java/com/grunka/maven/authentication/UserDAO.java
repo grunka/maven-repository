@@ -133,4 +133,36 @@ public class UserDAO {
     private Connection getConnection() throws SQLException {
         return DriverManager.getConnection("jdbc:sqlite:" + userDatabaseLocation);
     }
+
+    public boolean setAccess(String username, Access access) {
+        databaseLock.lock();
+        try (Connection connection = getConnection()) {
+            try (PreparedStatement preparedStatement = connection.prepareStatement("UPDATE users SET access = ? WHERE username = ?")) {
+                preparedStatement.setString(1, access.toString());
+                preparedStatement.setString(2, username);
+                return preparedStatement.executeUpdate() == 1;
+            }
+        } catch (SQLException e) {
+            LOG.error("Failed to update access to {} for user {}", access, username, e);
+            return false;
+        } finally {
+            databaseLock.unlock();
+        }
+    }
+
+    public boolean setPassword(String username, String password) {
+        databaseLock.lock();
+        try (Connection connection = getConnection()) {
+            try (PreparedStatement preparedStatement = connection.prepareStatement("UPDATE users SET password = ? WHERE username = ?")) {
+                preparedStatement.setString(1, passwordValidator.createHash(password));
+                preparedStatement.setString(2, username);
+                return preparedStatement.executeUpdate() == 1;
+            }
+        } catch (SQLException e) {
+            LOG.error("Failed to update password for user {}", username, e);
+            return false;
+        } finally {
+            databaseLock.unlock();
+        }
+    }
 }
