@@ -1,9 +1,9 @@
 package com.grunka.maven;
 
 import com.grunka.maven.authentication.Access;
-import io.dropwizard.Configuration;
+import io.dropwizard.core.Configuration;
 
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 import java.util.Map;
 
 public class MavenRepositoryConfiguration extends Configuration {
