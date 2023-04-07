@@ -16,3 +16,9 @@ remoteRepositories:
   central: https://repo1.maven.org/maven2/
 
 defaultAccess: none
+
+#users:
+#  read:
+#    read-user: read-password
+#  write:
+#    deploy-user: deploy-password
