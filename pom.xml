@@ -27,7 +27,7 @@
     <scm>
         <connection>scm:git:git://github.com/grunka/maven-repository</connection>
         <developerConnection>scm:git:ssh://github.com:grunka/maven-repository</developerConnection>
-        <url>http://github.com/grunka/maven-repository/tree/master</url>
+        <url>https://github.com/grunka/maven-repository/tree/master</url>
     </scm>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
