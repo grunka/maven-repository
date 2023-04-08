@@ -8,24 +8,32 @@ server:
 
 logging:
   level: INFO
-  loggers:
-    com.grunka.maven: DEBUG
 
+# Location for where all artifacts are stored with a subdirectory for each remote repository
 storageDirectory: storage
+
+# Remote repository configurations
 remoteRepositories:
   central:
     url: https://repo1.maven.org/maven2/
-#  another:
-#    url: https://repo1.maven.org/maven2/
+#  private:
+#    url: https://some.private.repo/
 #    username: user
 #    password: pass
 
+# The access level for a not logged-in user. Valid levels are "none", "read", and "write"
+# - "none": Not allowed to do anything
+# - "read": Allowed to download anything available from any configured repository
+# - "write": Allowed to deploy artifacts to the local repository. Still not allowed to overwrite deployed artifacts.
 defaultAccess: none
 
+# One possible way of configuring users on different levels of access, passwords are either plaintext or passwords hashes
+#  generated using the command line options available in the application. See the README.md for more details.
 #users:
 #  read:
 #    read-user: read-password
 #  write:
 #    deploy-user: deploy-password
 
+# Connection string for an optional sqlite user database. The file can be created and updated using command line parameters in the application.
 #sqliteDatabase: jdbc:sqlite:storage/users.sqlite
