@@ -114,7 +114,6 @@ public class MavenRepositoryResource {
     }
 
     private CompletableFuture<Response> createFileListing(String urlPath, List<java.nio.file.Path> localFilePaths) {
-        //TODO think about possible problems with navigating outside of storage
         List<String> directories = new ArrayList<>();
         List<String> files = new ArrayList<>();
         String pathPrefix;
@@ -147,12 +146,23 @@ public class MavenRepositoryResource {
                 .map(b -> new String(b, StandardCharsets.UTF_8))
                 .orElseThrow(() -> new WebApplicationException(notFound()));
 
-        pageHtml = pageHtml.replaceAll("%directories%", directories.stream().sorted().distinct().map(d -> "<li><a href=\"/repository/" + d + "\">" + d + "</a></li>").collect(Collectors.joining()));
-        pageHtml = pageHtml.replaceAll("%files%", files.stream().sorted().distinct().map(d -> "<li><a href=\"/repository/" + d + "\">" + d + "</a></li>").collect(Collectors.joining()));
+        String directoriesHtml = directories.stream().sorted().distinct().map(d -> "<li><a href=\"/repository/" + d + "\">" + d + "</a></li>").collect(Collectors.joining());
+        pageHtml = pageHtml.replaceAll("%directories%", directoriesHtml);
+        String filesHtml = files.stream().sorted().distinct().map(d -> "<li><a href=\"/repository/" + d + "\">" + d + "</a></li>").collect(Collectors.joining());
+        pageHtml = pageHtml.replaceAll("%files%", filesHtml);
         pageHtml = pageHtml.replaceAll("%title-addition%", pathPrefix.isEmpty() ? "" : " &raquo; " + pathPrefix);
-        pageHtml = pageHtml.replaceAll("%previous-path%", "/repository"); //TODO figure out path
-        //TODO "up" should not exist on root page
-        //TODO hide files section when no files available
+        String previousPath;
+        if (pathPrefix.isEmpty()) {
+            previousPath = "/repository";
+        } else {
+            int lastSlash = pathPrefix.lastIndexOf('/', pathPrefix.length() - 2);
+            if (lastSlash == -1) {
+                previousPath = "/repository";
+            } else {
+                previousPath = "/repository/" + pathPrefix.substring(0, lastSlash);
+            }
+        }
+        pageHtml = pageHtml.replaceAll("%previous-path%", previousPath);
         return CompletableFuture.completedFuture(Response.ok(pageHtml).type(MediaType.TEXT_HTML_TYPE).build());
     }
 
