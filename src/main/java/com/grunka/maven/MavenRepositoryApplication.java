@@ -153,6 +153,24 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
                 System.exit(0);
             }
         });
+        bootstrap.addCommand(new Command("generate-mysql-password-hash", "Generates a password hash in the style of mysql") {
+            @Override
+            public void configure(Subparser subparser) {
+            }
+
+            @Override
+            public void run(Bootstrap<?> bootstrap, Namespace namespace) {
+                Console console = System.console();
+                if (console == null) {
+                    LOG.error("Not able to read from console");
+                    System.exit(1);
+                }
+                String password = new String(console.readPassword("Password: "));
+                String hash = PasswordValidator.password(password);
+                System.out.println(hash);
+                System.exit(0);
+            }
+        });
         bootstrap.addCommand(new Command("set-user-access", "Set access level for a user in the sqlite database") {
             @Override
             public void configure(Subparser subparser) {

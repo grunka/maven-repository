@@ -76,7 +76,7 @@ public class PasswordValidator {
         }
     }
 
-    private static String password(String password) {
+    public static String password(String password) {
         try {
             MessageDigest sha1 = MessageDigest.getInstance("SHA1");
             byte[] digest = sha1.digest(password.getBytes(StandardCharsets.UTF_8));
