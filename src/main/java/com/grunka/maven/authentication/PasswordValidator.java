@@ -32,7 +32,7 @@ public class PasswordValidator {
         if (splits.length == 3) {
             byte[] salt = HexFormat.of().parseHex(splits[0]);
             int iterationCount = Integer.parseInt(splits[1], 16);
-            int keyLength = splits[2].length() * 8;
+            int keyLength = HexFormat.of().parseHex(splits[2]).length * 8;
             String hashed = hash(salt, password, keyLength, iterationCount);
             return hashed.equals(splits[2]);
         } else {
@@ -52,7 +52,7 @@ public class PasswordValidator {
             if (Integer.parseInt(splits[1], 16) != iterationCount) {
                 return true;
             }
-            return splits[2].length() != keyLength / 8;
+            return HexFormat.of().parseHex(splits[2]).length != keyLength / 8;
         } else {
             return true;
         }
