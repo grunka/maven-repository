@@ -2,22 +2,33 @@
 <html lang="en">
 <head>
     <title>maven-repository</title>
-    <link rel="icon" type="image/x-icon" href="pom.png">
+    <link rel="icon" type="image/x-icon" href="/pom.png">
     <style>
-        .logo {
+        html {
+            font-family: system-ui, "Helvetica Neue", "Helvetica", sans-serif;
+        }
+        main {
             position: absolute;
-            top: 0;
-            left: 0;
+            top: 50%;
+            left: 50%;
+            width: 200px;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+        main img {
             width: 100%;
-            height: 100%;
-            background-image: url("pom.png");
-            background-size: 10%;
-            background-repeat: no-repeat;
-            background-position: center;
+            display: block;
+        }
+        main a:visited {
+            color: inherit;
         }
     </style>
 </head>
 <body>
-<div class="logo"></div>
+<main>
+    <img src="/pom.png" alt="Pom!">
+    <a href="/repository">Repository</a>
+    <a href="https://github.com/grunka/maven-repository">Github</a>
+</main>
 </body>
 </html>
