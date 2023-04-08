@@ -29,6 +29,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Path("/repository")
@@ -99,9 +100,47 @@ public class MavenRepositoryResource {
                             .build()
                     );
         } else {
-            LOG.info("Reading {} locally", path);
-            return createFileContentResponse(localFile.get(), includeBody);
+            java.nio.file.Path localPath = localFile.get();
+            if (Files.isDirectory(localPath)) {
+                return createFileListing(path, localFiles);
+            } else {
+                LOG.info("Reading {} locally", path);
+                return createFileContentResponse(localPath, includeBody);
+            }
         }
+    }
+
+    private CompletableFuture<Response> createFileListing(String urlPath, List<java.nio.file.Path> localFilePaths) {
+        List<String> directories = new ArrayList<>();
+        List<String> files = new ArrayList<>();
+        String pathPrefix;
+        if (urlPath.isEmpty()) {
+            pathPrefix = "";
+        } else if (urlPath.endsWith("/")) {
+            pathPrefix = urlPath;
+        } else {
+            pathPrefix = urlPath + "/";
+        }
+        for (java.nio.file.Path localFilePath : localFilePaths) {
+            try (Stream<java.nio.file.Path> localPaths = Files.list(localFilePath)) {
+                localPaths.forEach(path -> {
+                    String stringPath = pathPrefix + path.getFileName().toString();
+                    if (Files.isDirectory(path)) {
+                        directories.add(stringPath);
+                    } else {
+                        files.add(stringPath);
+                    }
+                });
+            } catch (IOException e) {
+                LOG.error("Failed to list files in {}", localFilePath, e);
+            }
+        }
+        //TODO extract to template file in resources
+        //TODO think about possible problems with navigating outside of storage
+        String directoriesHtml = directories.stream().sorted().distinct().map(d -> "<li><a href=\"" + d + "\">" + d + "</a></li>").collect(Collectors.joining());
+        String filesHtml = files.stream().sorted().distinct().map(d -> "<li><a href=\"" + d + "\">" + d + "</a></li>").collect(Collectors.joining());
+        String html = "<!DOCTYPE><html><head><title>" + urlPath + "</title><base href=\"/repository/\"></head><body><ul>" + directoriesHtml + "</ul><ul>" + filesHtml + "</ul></body></html>";
+        return CompletableFuture.completedFuture(Response.ok(html).type(MediaType.TEXT_HTML_TYPE).build());
     }
 
     private CompletableFuture<java.nio.file.Path> getRemoteFile(String path, List<FileRequest> requests) {
@@ -228,6 +267,12 @@ public class MavenRepositoryResource {
                 .status(Response.Status.NO_CONTENT)
                 .header("Allow", "OPTIONS, HEAD, GET, PUT")
                 .build();
+    }
+
+    @GET
+    public CompletableFuture<Response> getRoot(@Auth User user) {
+        assertUserLevel(user, Access.read);
+        return getRepositoryContent("", true);
     }
 
     @GET
