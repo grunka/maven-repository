@@ -18,6 +18,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
@@ -41,11 +42,13 @@ public class MavenRepositoryResource {
     static final String LOCAL = "local";
     private final java.nio.file.Path storageDirectory;
     private final LinkedHashMap<String, Repository> remoteRepositories;
+    private final ResourceLoader resourceLoader;
     private final Map<java.nio.file.Path, SoftReference<CompletableFuture<FileContent>>> fileCache = new ConcurrentHashMap<>();
 
-    public MavenRepositoryResource(java.nio.file.Path storageDirectory, LinkedHashMap<String, Repository> remoteRepositories) {
+    public MavenRepositoryResource(java.nio.file.Path storageDirectory, LinkedHashMap<String, Repository> remoteRepositories, ResourceLoader resourceLoader) {
         this.storageDirectory = storageDirectory;
         this.remoteRepositories = remoteRepositories;
+        this.resourceLoader = resourceLoader;
     }
 
     private record FileRequest(String repositoryName, Repository repository, String path) {
@@ -111,6 +114,7 @@ public class MavenRepositoryResource {
     }
 
     private CompletableFuture<Response> createFileListing(String urlPath, List<java.nio.file.Path> localFilePaths) {
+        //TODO think about possible problems with navigating outside of storage
         List<String> directories = new ArrayList<>();
         List<String> files = new ArrayList<>();
         String pathPrefix;
@@ -138,12 +142,18 @@ public class MavenRepositoryResource {
                 LOG.error("Failed to list files in {}", localFilePath, e);
             }
         }
-        //TODO extract to template file in resources
-        //TODO think about possible problems with navigating outside of storage
-        String directoriesHtml = directories.stream().sorted().distinct().map(d -> "<li><a href=\"" + d + "\">" + d + "</a></li>").collect(Collectors.joining());
-        String filesHtml = files.stream().sorted().distinct().map(d -> "<li><a href=\"" + d + "\">" + d + "</a></li>").collect(Collectors.joining());
-        String html = "<!DOCTYPE><html><head><title>" + urlPath + "</title><base href=\"/repository/\"></head><body><ul>" + directoriesHtml + "</ul><ul>" + filesHtml + "</ul></body></html>";
-        return CompletableFuture.completedFuture(Response.ok(html).type(MediaType.TEXT_HTML_TYPE).build());
+
+        String pageHtml = resourceLoader.getBytes("/listing.html")
+                .map(b -> new String(b, StandardCharsets.UTF_8))
+                .orElseThrow(() -> new WebApplicationException(notFound()));
+
+        pageHtml = pageHtml.replaceAll("%directories%", directories.stream().sorted().distinct().map(d -> "<li><a href=\"/repository/" + d + "\">" + d + "</a></li>").collect(Collectors.joining()));
+        pageHtml = pageHtml.replaceAll("%files%", files.stream().sorted().distinct().map(d -> "<li><a href=\"/repository/" + d + "\">" + d + "</a></li>").collect(Collectors.joining()));
+        pageHtml = pageHtml.replaceAll("%title-addition%", pathPrefix.isEmpty() ? "" : " &raquo; " + pathPrefix);
+        pageHtml = pageHtml.replaceAll("%previous-path%", "/repository"); //TODO figure out path
+        //TODO "up" should not exist on root page
+        //TODO hide files section when no files available
+        return CompletableFuture.completedFuture(Response.ok(pageHtml).type(MediaType.TEXT_HTML_TYPE).build());
     }
 
     private CompletableFuture<java.nio.file.Path> getRemoteFile(String path, List<FileRequest> requests) {

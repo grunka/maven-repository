@@ -232,7 +232,8 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
         if (!Files.isWritable(storageDirectory)) {
             throw new IllegalStateException(storageDirectory + " is not writable");
         }
-        environment.jersey().register(new IndexResource());
+        ResourceLoader resourceLoader = new ResourceLoader();
+        environment.jersey().register(new IndexResource(resourceLoader));
 
         Instant startedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         environment.healthChecks().register("uptime", new HealthCheck() {
@@ -250,7 +251,7 @@ public class MavenRepositoryApplication extends Application<MavenRepositoryConfi
 
         configureAuthentication(configuration, environment);
 
-        environment.jersey().register(new MavenRepositoryResource(storageDirectory, configuration.remoteRepositories));
+        environment.jersey().register(new MavenRepositoryResource(storageDirectory, configuration.remoteRepositories, resourceLoader));
     }
 
     private static void configureAuthentication(MavenRepositoryConfiguration configuration, Environment environment) {

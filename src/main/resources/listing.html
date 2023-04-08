@@ -1,37 +1,61 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>maven-repository</title>
+    <title>maven-repository%title-addition%</title>
     <link rel="icon" type="image/x-icon" href="/pom.png">
     <style>
         html {
             font-family: system-ui, "Helvetica Neue", "Helvetica", sans-serif;
         }
+
         main {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 200px;
-            transform: translate(-50%, -50%);
-            text-align: center;
         }
+
+        ul {
+            list-style: none inside none;
+            margin: 0 0 0 10px;
+            padding: 0;
+        }
+
         main img {
             width: 100%;
             display: block;
         }
+
         a {
             color: #000000;
         }
         a:visited {
             color: #707070;
         }
+
+        header img {
+            width: 100px;
+        }
     </style>
 </head>
 <body>
+<header>
+    <a href="/"><img src="/pom.png" alt="Pom!"></a>
+</header>
 <main>
-    <img src="/pom.png" alt="Pom!">
+    <a href="%previous-path%">Up</a>
+    <section>
+        <h1>Directories</h1>
+        <ul>
+            %directories%
+        </ul>
+    </section>
+    <section>
+        <h1>Files</h1>
+        <ul>
+            %files%
+        </ul>
+    </section>
+</main>
+<footer>
     <a href="/repository">Repository</a>
     <a href="https://github.com/grunka/maven-repository">Github</a>
-</main>
+</footer>
 </body>
 </html>
