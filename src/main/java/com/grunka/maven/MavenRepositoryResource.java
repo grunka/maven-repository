@@ -122,6 +122,9 @@ public class MavenRepositoryResource {
             pathPrefix = urlPath + "/";
         }
         for (java.nio.file.Path localFilePath : localFilePaths) {
+            if (!Files.isDirectory(localFilePath)) {
+                continue;
+            }
             try (Stream<java.nio.file.Path> localPaths = Files.list(localFilePath)) {
                 localPaths.forEach(path -> {
                     String stringPath = pathPrefix + path.getFileName().toString();
